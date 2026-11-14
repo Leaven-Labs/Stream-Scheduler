@@ -30,8 +30,7 @@ sign-ins are kept.
 **Windows.** Run **Stream-Scheduler-Windows-Setup.exe**. It installs for you alone, without an
 administrator prompt, and can start the app each time you sign in to Windows. It isn't code-signed yet,
 so if Windows says *"Windows protected your PC"*, click **More info** → **Run anyway**. To update, run
-the newer Setup: your destinations, schedules and sign-ins are kept. (`Stream-Scheduler-Windows.zip` is
-the same program without an installer: unzip and run **Stream Scheduler.exe**.)
+the newer Setup: your destinations, schedules and sign-ins are kept.
 
 **Mac.** Unzip and drag **Stream Scheduler** to **Applications**. It isn't signed with an Apple
 developer ID yet, so the first time macOS refuses to open it: click **Done**, open **System Settings →

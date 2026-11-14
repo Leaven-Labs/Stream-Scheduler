@@ -1,7 +1,6 @@
 """Build the program for this system with PyInstaller and pack it for download.
 
   python tools/build.py        -> dist/Stream-Scheduler-Windows-Setup.exe (the installer; needs Inno Setup 6)
-                                  dist/Stream-Scheduler-Windows.zip      (Stream Scheduler.exe in a folder)
                                   dist/Stream-Scheduler-macOS.zip        (Stream Scheduler.app)
                                   dist/Stream-Scheduler-Linux-x86_64.tar.gz
 
@@ -91,10 +90,10 @@ def main():
 
     dist = os.path.join(root, "dist")
     if sys.platform == "win32":
-        out = shutil.make_archive(os.path.join(dist, "Stream-Scheduler-Windows"), "zip", dist, NAME)
-        setup = installer()
-        if setup:
-            print("built", setup, f"({os.path.getsize(setup) / 1e6:.0f} MB)")
+        out = installer()
+        if out is None:
+            print("built", os.path.join(dist, NAME), "(the program in a folder, not packed)")
+            return
     elif sys.platform == "darwin":
         out = os.path.join(dist, "Stream-Scheduler-macOS.zip")   # ditto keeps the app's links and flags
         subprocess.run(["ditto", "-c", "-k", "--keepParent", os.path.join(dist, NAME + ".app"), out], check=True)
