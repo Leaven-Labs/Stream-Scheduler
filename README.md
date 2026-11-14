@@ -68,9 +68,11 @@ stream is still more than 10 minutes away. A stream is never created twice.
   production*, or Google ends the sign-in every 7 days. Choose a stream key in the guide and your
   encoder keeps the same key every week. Live streaming must be enabled on the channel.
 - **Facebook.** You create your own free Meta app and an access key for your Page. Facebook accepts a
-  stream at most 7 days ahead (so a schedule creates it at most 6 days before), and gives **each
-  scheduled stream its own stream key**: copy it from the **History** page before going live. Switch
-  the Meta app to *Live* mode, or only you can see what it posts.
+  stream at most 7 days ahead (so a schedule creates it at most 6 days before). The app asks Facebook
+  to use the Page's **persistent stream key** for each stream, so the encoder keeps one key; this is
+  on by default per Page and not yet confirmed on a real Page. If Facebook refuses, the stream is still
+  created with its own key, which you can copy from the **History** page. Switch the Meta app to
+  *Live* mode, or only you can see what it posts.
 
 ## Where your files are
 

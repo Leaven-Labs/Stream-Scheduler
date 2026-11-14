@@ -10,7 +10,8 @@ def fill(store, vault):
          "client_id": "demo.apps.googleusercontent.com",
          "options": {"privacy": "public", "stream_id": "k", "stream_title": "Default stream key",
                      "made_for_kids": False, "auto_start": True, "auto_stop": True}},
-        {"id": "demo-fb", "kind": "facebook", "name": "Grace Community Church", "account_id": "1", "options": {}}])
+        {"id": "demo-fb", "kind": "facebook", "name": "Grace Community Church", "account_id": "1",
+         "options": {"persistent_key": True}}])
     store.schedules.extend([
         {"id": "demo-s1", "name": "Sunday Service", "enabled": True, "weekdays": [6], "time": "08:00",
          "lead_days": 1, "create_time": "09:00", "title": "Sunday Service - {date}",

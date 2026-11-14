@@ -35,13 +35,24 @@ def page_name(page_id, page_token):
     return net.request("GET", f"{GRAPH}/{page_id}", {"fields": "name"}, token=page_token)["name"]
 
 
-def create_live(page_id, page_token, title, description, start_utc):
+def create_live(page_id, page_token, title, description, start_utc, persistent_key=False):
     """Schedule a live video on the Page. Returns {"id", "url", "note"}.
 
-    Facebook wants the start between 10 minutes and 7 days from now."""
+    Facebook wants the start between 10 minutes and 7 days from now. With persistent_key, the video is
+    then told to use the Page's persistent stream key (the same key every week) instead of a key of
+    its own. If Facebook refuses that, the stream still exists and the note says so."""
     made = net.request("POST", f"{GRAPH}/{page_id}/live_videos", token=page_token, form={
         "status": "SCHEDULED_UNPUBLISHED", "title": title, "description": description,
         "event_params": json.dumps({"start_time": int(start_utc.timestamp())})})
+    note = ""
+    if persistent_key:
+        try:
+            net.request("POST", f"{GRAPH}/{made['id']}", token=page_token,
+                        form={"persistent_stream_key_status": "ENABLE"})
+        except net.ApiError as exc:
+            note = (f"Created, but Facebook did not switch on the persistent stream key ({exc}). This stream has "
+                    "its own key: copy it from the History page, or turn on 'Persistent stream key' for it in "
+                    "Facebook's Live Producer.")
     url = ""
     try:
         link = net.request("GET", f"{GRAPH}/{made['id']}", {"fields": "permalink_url"},
@@ -49,7 +60,7 @@ def create_live(page_id, page_token, title, description, start_utc):
         url = link if link.startswith("http") else ("https://www.facebook.com" + link if link else "")
     except net.ApiError:
         pass  # the stream exists; only its link is unknown
-    return {"id": made["id"], "url": url, "note": ""}
+    return {"id": made["id"], "url": url, "note": note}
 
 
 def stream_address(video_id, page_token):

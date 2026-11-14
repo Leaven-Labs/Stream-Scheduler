@@ -289,7 +289,8 @@ class DestinationsPage(Page):
                 detail = (f"YouTube channel  ·  {o.get('privacy', 'public').capitalize()}  ·  "
                           f"Stream key: {o.get('stream_title') or 'chosen in YouTube Studio'}")
             else:
-                detail = "Facebook Page  ·  each stream gets its own stream key (see History)"
+                detail = "Facebook Page  ·  " + ("uses the Page's persistent stream key" if d.get("options", {}).get(
+                    "persistent_key") else "each stream gets its own stream key (see History)")
             mid.addWidget(ui.label(detail, "sub", wrap=True))
             kind, text = self.results.get(d["id"], ("small", f"Sign-in kept in {self.vault.where()}"))
             mid.addWidget(ui.label(text, kind, wrap=True))
@@ -298,6 +299,11 @@ class DestinationsPage(Page):
                                     "Ask the platform whether the saved sign-in still works"), 0, Qt.AlignTop)
             if d["kind"] == "youtube":
                 row.addWidget(ui.button("Options", "mini", lambda _=False, d=d: self.options(d)), 0, Qt.AlignTop)
+            else:
+                on = d.get("options", {}).get("persistent_key", False)
+                row.addWidget(ui.button("Own key per stream" if on else "Use persistent key", "mini",
+                                        lambda _=False, d=d, on=on: self.persistent(d, not on),
+                                        "Whether new streams use the Page's persistent stream key"), 0, Qt.AlignTop)
             row.addWidget(ui.button("Remove", "mini", lambda _=False, d=d: self.remove(d)), 0, Qt.AlignTop)
             self.col.addWidget(card)
         self.col.addWidget(ui.callout(
@@ -315,6 +321,11 @@ class DestinationsPage(Page):
                 for s in self.store.schedules:
                     s["destinations"].append(wizard.destination["id"])
                 self.store.save()
+
+    def persistent(self, dest, on):
+        dest.setdefault("options", {})["persistent_key"] = on
+        self.store.save()
+        self.refresh()
 
     def options(self, dest):
         dialog = YouTubeOptionsDialog(self, dest)

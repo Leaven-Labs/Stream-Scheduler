@@ -78,7 +78,8 @@ def create(store, vault, item, dest, now=None):
                                             dest.get("options", {}))
         elif dest["kind"] == "facebook":
             made = facebook.create_live(dest["account_id"], vault.get(dest["id"], "page_token"),
-                                        item["title"], item["description"], start)
+                                        item["title"], item["description"], start,
+                                        dest.get("options", {}).get("persistent_key", False))
         else:
             raise net.ApiError(f"Unknown kind of destination: {dest['kind']}")
         entry.update(status="created", remote_id=made["id"], url=made["url"], note=made["note"])

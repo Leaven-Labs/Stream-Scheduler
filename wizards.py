@@ -402,8 +402,10 @@ class FacebookWizard(Wizard):
                   "No app review is needed: you only use the app for a Page you manage yourself."),
             ui.callout("Check the first one",
                        "After the first stream is scheduled, look at your Page while signed out (or ask someone "
-                       "else) to make sure the announcement is visible. Each scheduled Facebook stream has its "
-                       "own stream key: copy it from the History page before you go live.", "warn", "warn")])
+                       "else) to make sure the announcement is visible. The app asks Facebook to use your Page's "
+                       "<b>persistent stream key</b> for every stream, so your encoder keeps one key. Confirm on "
+                       "the first stream that your usual key takes it live; if not, the History page shows why "
+                       "and lets you copy that stream's own key.", "warn", "warn")])
         self.ready()
 
     def find_pages(self):
@@ -441,7 +443,8 @@ class FacebookWizard(Wizard):
 
     def finish(self):
         page = self.found[self.page.currentIndex()]
-        dest = {"id": new_id(), "kind": "facebook", "name": page["name"], "account_id": page["id"], "options": {}}
+        dest = {"id": new_id(), "kind": "facebook", "name": page["name"], "account_id": page["id"],
+                "options": {"persistent_key": True}}
         try:
             self.vault.set(dest["id"], "page_token", page["token"])
         except VaultError as exc:

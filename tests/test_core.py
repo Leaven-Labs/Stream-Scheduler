@@ -216,6 +216,28 @@ class EngineTest(Base):
         self.assertIn("7 days", done[0]["note"])
         self.assertIn("missing from the keychain", done[1]["note"])
 
+    def test_facebook_persistent_key(self):
+        self.store.destination("fb")["options"] = {"persistent_key": True}
+        self.store.schedules[0]["destinations"] = ["fb"]
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        call = next(c for c in self.net.calls if c["url"].endswith("/fb456") and c["method"] == "POST")
+        self.assertEqual(call["data"], b"persistent_stream_key_status=ENABLE")
+        self.assertEqual((done[0]["status"], done[0]["note"]), ("created", ""))
+
+    def test_facebook_persistent_key_refused_still_creates(self):
+        self.store.destination("fb")["options"] = {"persistent_key": True}
+        self.store.schedules[0]["destinations"] = ["fb"]
+        real = self.net
+
+        def refuse(method, url, headers, data, timeout):
+            if method == "POST" and url.endswith("/fb456"):
+                return 400, b'{"error": {"message": "(#100) Invalid parameter"}}'
+            return real(method, url, headers, data, timeout)
+        net.send = refuse
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertEqual(done[0]["status"], "created")
+        self.assertIn("did not switch on the persistent stream key", done[0]["note"])
+
     def test_youtube_live_not_enabled(self):
         self.net.routes = [("liveBroadcasts", 403, {"error": {"message": "x", "errors": [
             {"reason": "liveStreamingNotEnabled"}]}})] + OK_ROUTES
