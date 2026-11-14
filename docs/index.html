@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Scheduler</title>
+<style>
+  :root { --bg:#0f1117; --card:#1a1e2b; --text:#eceef5; --sub:#9299ad; --line:#2a2f40; --accent:#8b7cf8; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f5fa; --card:#ffffff; --text:#1b1d2a; --sub:#666b80; --line:#e2e2ec; --accent:#5b4be0; } }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:56px 20px 72px; }
+  h1 { font-size:34px; margin:18px 0 6px; } h2 { font-size:20px; margin:34px 0 8px; }
+  p.lead { color:var(--sub); font-size:18px; margin-top:0; }
+  a { color:var(--accent); } img.shot { width:100%; border:1px solid var(--line); border-radius:12px; margin-top:22px; }
+  .button { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; font-weight:600;
+            padding:10px 20px; border-radius:8px; margin:10px 10px 0 0; }
+  .button.plain { background:var(--card); color:var(--text); border:1px solid var(--line); }
+  footer { color:var(--sub); font-size:14px; margin-top:44px; border-top:1px solid var(--line); padding-top:16px; }
+</style>
+</head>
+<body>
+<main>
+  <img src="https://raw.githubusercontent.com/Leaven-Labs/Stream-Scheduler/main/assets/icon.svg" width="84" height="84" alt="">
+  <h1>Stream Scheduler</h1>
+  <p class="lead">Schedules your weekly live streams on YouTube and Facebook by itself, with the date of each
+    stream already in the title.</p>
+  <a class="button" href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">Download</a>
+  <a class="button plain" href="https://github.com/Leaven-Labs/Stream-Scheduler">Source code</a>
+  <img class="shot" src="upcoming-dark.png" alt="The list of upcoming streams">
+
+  <h2>What it does</h2>
+  <p>You say when you stream, for example every Sunday at 8:00 AM, and what the title is. The app, running on
+    your own computer, creates each scheduled live stream on your YouTube channel and your Facebook Page a
+    chosen number of days before, through the platforms' official APIs.</p>
+
+  <h2>Your data</h2>
+  <p>Stream Scheduler is a free, open-source desktop program by Leaven Labs. It has no server: it talks from
+    your computer directly to Google and Meta, and your sign-ins are kept in your system's keychain. See the
+    <a href="privacy.html">privacy policy</a>.</p>
+
+  <footer>
+    <a href="privacy.html">Privacy policy</a> · <a href="https://github.com/Leaven-Labs/Stream-Scheduler/blob/main/LICENSE">MIT license</a>
+    · YouTube and Facebook are trademarks of their owners. This app is not affiliated with or endorsed by Google or Meta.
+  </footer>
+</main>
+</body>
+</html>

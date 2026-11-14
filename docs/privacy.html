@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · Stream Scheduler</title>
+<style>
+  :root { --bg:#0f1117; --text:#eceef5; --sub:#9299ad; --line:#2a2f40; --accent:#8b7cf8; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f5fa; --text:#1b1d2a; --sub:#666b80; --line:#e2e2ec; --accent:#5b4be0; } }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:48px 20px 72px; }
+  h1 { font-size:30px; margin-bottom:4px; } h2 { font-size:19px; margin:30px 0 6px; }
+  .sub { color:var(--sub); } a { color:var(--accent); }
+  footer { color:var(--sub); font-size:14px; margin-top:40px; border-top:1px solid var(--line); padding-top:16px; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Stream Scheduler</a></p>
+  <h1>Privacy policy</h1>
+  <p class="sub">Stream Scheduler, a desktop program by Leaven Labs. Last updated November 14, 2026.</p>
+
+  <h2>In short</h2>
+  <p>Stream Scheduler runs on your computer and has no server. Leaven Labs does not receive, collect, store,
+    sell or share any of your data. There are no accounts with us, no analytics and no advertising.</p>
+
+  <h2>What the app accesses, and why</h2>
+  <p><b>YouTube.</b> When you connect a channel, you sign in on Google's own page and allow the app to manage
+    your YouTube account. The app uses this only to read your channel's name and its stream keys' names, and to
+    create the scheduled live broadcasts of your schedules (their title, description, start time and
+    visibility). It does not read your videos, comments, viewers or other account data.</p>
+  <p><b>Facebook.</b> When you connect a Page, the app uses an access token for that Page only to read the
+    Page's name and to create the scheduled live videos of your schedules.</p>
+
+  <h2>Where data is kept</h2>
+  <p>Everything stays on your computer. Your schedules, the names and ids of your channel and Page, and the
+    history of created streams are in a settings file in your user folder. Sign-in tokens and client secrets
+    are in your operating system's keychain (Windows Credential Manager, macOS Keychain, or the Linux Secret
+    Service). Stream keys are not saved.</p>
+
+  <h2>Who data is sent to</h2>
+  <p>The app sends requests only to Google (YouTube) and Meta (Facebook), over HTTPS, to do what is described
+    above. Nothing is sent to Leaven Labs or to anyone else.</p>
+
+  <h2>Removing access and deleting data</h2>
+  <p>Remove a destination in the app to delete its sign-in from your computer. You can also revoke the app's
+    access at any time in your
+    <a href="https://myaccount.google.com/permissions">Google account's security settings</a>, and for Facebook
+    under Settings → Business integrations. Deleting the app's settings folder deletes everything else.</p>
+
+  <h2>YouTube API Services</h2>
+  <p>The app uses YouTube API Services. By using it with YouTube you agree to the
+    <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>, and Google's handling of your data
+    is described in the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</p>
+
+  <h2>Changes and contact</h2>
+  <p>Changes to this policy are published on this page. Questions: open an issue at
+    <a href="https://github.com/Leaven-Labs/Stream-Scheduler/issues">github.com/Leaven-Labs/Stream-Scheduler</a>.</p>
+
+  <footer>Stream Scheduler is not affiliated with or endorsed by Google or Meta.</footer>
+</main>
+</body>
+</html>
