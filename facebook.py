@@ -1,4 +1,4 @@
-"""Facebook: schedule live videos on a Page with the Graph API.
+"""Facebook: schedule live videos (as events) on a Page with the Graph API.
 
 The user makes their own Meta app and a short-lived token for it (the wizard explains how). The app
 trades that for a long-lived one, asks for the Page's own token, and keeps ONLY the Page token (in
@@ -8,7 +8,7 @@ import json
 
 import net
 
-GRAPH_VERSION = "v24.0"   # Meta retires versions after about two years; raise this with a release
+GRAPH_VERSION = "v26.0"   # Meta retires versions after about two years; raise this with a release
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
 PERMISSIONS = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"]
 
@@ -41,8 +41,10 @@ def create_live(page_id, page_token, title, description, start_utc, persistent_k
     Facebook wants the start between 10 minutes and 7 days from now. With persistent_key, the video is
     then told to use the Page's persistent stream key (the same key every week) instead of a key of
     its own. If Facebook refuses that, the stream still exists and the note says so."""
+    # Facebook retired the status SCHEDULED_UNPUBLISHED ("Scheduled Live has been deprecated"). A live
+    # video with event_params is created as a scheduled event instead; an event must have a description.
     made = net.request("POST", f"{GRAPH}/{page_id}/live_videos", token=page_token, form={
-        "status": "SCHEDULED_UNPUBLISHED", "title": title, "description": description,
+        "status": "UNPUBLISHED", "title": title, "description": description.strip() or title,
         "event_params": json.dumps({"start_time": int(start_utc.timestamp())})})
     note = ""
     if persistent_key:
@@ -53,7 +55,9 @@ def create_live(page_id, page_token, title, description, start_utc, persistent_k
             note = (f"Created, but Facebook did not switch on the persistent stream key ({exc}). This stream has "
                     "its own key: copy it from the History page, or turn on 'Persistent stream key' for it in "
                     "Facebook's Live Producer.")
-    url = ""
+    url = f"https://www.facebook.com/events/{made['event_id']}" if made.get("event_id") else ""
+    if url:
+        return {"id": made["id"], "url": url, "note": note}
     try:
         link = net.request("GET", f"{GRAPH}/{made['id']}", {"fields": "permalink_url"},
                            token=page_token).get("permalink_url", "")
