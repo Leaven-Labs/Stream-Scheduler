@@ -209,23 +209,52 @@ class YouTubeWizard(Wizard):
             ui.callout("Good to know", "The project belongs to you. It gets a free daily allowance from "
                        "YouTube that is far more than a few scheduled streams a week will use.")])
 
-        self.add_step("Consent screen", "Set up the sign-in screen", [
+        self.add_step("Sign-in screen", "Set up the sign-in screen", [
             steps(f"Open {link('https://console.cloud.google.com/auth/overview', 'Google Auth Platform')} and click "
                   "<b>Get started</b>.",
-                  "App name: <b>Stream Scheduler</b>. Support email: your own address.",
-                  "Audience: <b>External</b>. Enter your email as the contact, agree, and <b>Create</b>.",
-                  "Open <b>Branding</b>. Google wants it complete before the app can be published. Enter "
-                  f"Application home page: {link('https://leaven-labs.github.io/Stream-Scheduler/')}, privacy policy "
-                  f"link: {link('https://leaven-labs.github.io/Stream-Scheduler/privacy.html')}, and under "
-                  "Authorized domains add <b>leaven-labs.github.io</b>. Leave the logo empty (a logo makes "
-                  "Google ask for a verification review). <b>Save</b>.",
-                  "Open <b>Audience</b> at the left and click <b>Publish app</b>, so the status reads "
-                  "<b>In production</b>."),
-            ui.callout("Do not skip 'Publish app'",
+                  "App name: <b>Stream Scheduler</b>. User support email: your own address.",
+                  "Audience: <b>External</b>.",
+                  "Contact information: your email address. Agree to the policy and click <b>Create</b>."),
+            ui.callout("Why 'External'", "External means any Google account can be allowed to sign in, which "
+                       "includes the account that owns your channel. Nobody can use your project without the "
+                       "client secret you create in step 6 and your own Google login.")])
+
+        self.add_step("Branding", "Fill in the Branding page", [
+            ui.rich("Google will not let you publish the app until its <b>Branding</b> page is complete. For that "
+                    "you need a web page on <b>a domain you own</b>, such as your organisation's website. Pages on "
+                    "shared platforms (Google Sites, Facebook, a github.io address) are refused."),
+            steps("On your website, make (or choose) a <b>home page</b> for this use. It must be open to everyone "
+                  "without logging in, say what the app does (it schedules your live streams on YouTube), say why "
+                  "it asks for access to your YouTube account (to create those scheduled streams), and link to "
+                  "your privacy policy.",
+                  "Have a <b>privacy policy</b> page on the same domain. It should say what the app does with "
+                  "YouTube data: it creates your scheduled broadcasts, and keeps its sign-in on your computer only.",
+                  f"Prove the domain is yours: open {link('https://search.google.com/search-console', 'Google Search Console')} "
+                  "with the same Google account, choose <b>Add property → Domain</b>, enter your domain, and add "
+                  "the <b>TXT record</b> it shows at your domain's DNS provider. Click <b>Verify</b>.",
+                  "In Google Auth Platform open <b>Branding</b>. Enter the <b>Application home page</b> and the "
+                  "<b>Application privacy policy link</b>, and under <b>Authorized domains</b> add your domain "
+                  "(for example <b>example.org</b>, without www).",
+                  "Logo: optional. If you add one it must be square, 120 × 120 pixels, under 1 MB. The terms of "
+                  "service link can stay empty.",
+                  "Click <b>Save</b>. If Google reports a branding verification issue, fix what it names, wait "
+                  "24 hours as it asks, and choose <b>I have fixed the issues</b>."),
+            ui.callout("No website of your own?",
+                       "You can skip this step and stay in <b>Testing</b>: on the Audience page add your own Google "
+                       "address under <b>Test users</b>. Everything works, but Google ends the sign-in every 7 days, "
+                       "so you would have to connect the channel again each week.", "warn", "warn")])
+
+        self.add_step("Publish", "Publish the app", [
+            steps("Open <b>Audience</b> at the left.",
+                  "Click <b>Publish app</b> and confirm, so the publishing status reads <b>In production</b>.",
+                  "If the button is greyed out, the Branding page is not complete yet: go back one step."),
+            ui.callout("Do not skip this",
                        "While the status is <b>Testing</b>, Google ends every sign-in after 7 days and your "
                        "streams would stop being scheduled. Publishing does not make anything public: only someone "
-                       "with your client secret (next step) and your Google login can use it. You do not need "
-                       "Google's verification for your own use.", "warn", "warn")])
+                       "with your client secret (next step) and your Google login can use it.", "warn", "warn"),
+            ui.callout("Waiting for Google's verification is fine",
+                       "You can go on while Google is still checking your branding. Until it has finished, the "
+                       "sign-in shows a warning that the app is not verified; step 7 says how to continue.")])
 
         self.client_id = QLineEdit()
         self.client_id.setPlaceholderText("Client ID  (ends with .apps.googleusercontent.com)")
