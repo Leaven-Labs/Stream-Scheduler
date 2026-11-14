@@ -4,7 +4,7 @@ run_due() is called every minute while the app runs (and by `app.py --run` from 
 scheduler). It is safe to call again and again: a stream that was created at a destination is
 written to the history at once and is never created twice.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 import facebook
 import net
@@ -32,7 +32,7 @@ def text_for(store, schedule, when):
     fill = lambda text: titles.render(text, when, schedule.get("date_format", "long"), clock)
     title = fill(over["title"] if over.get("title") else schedule.get("title", ""))
     description = fill(over["description"] if "description" in over else schedule.get("description", ""))
-    return title, description, bool(over.get("title") or "description" in over)
+    return title, description, bool(over.get("title") or "description" in over or over.get("time"))
 
 
 def upcoming(store, now=None, limit=12):
@@ -42,8 +42,14 @@ def upcoming(store, now=None, limit=12):
     for schedule in store.schedules:
         if not schedule.get("enabled", True):
             continue
-        for when in recurrence.occurrences(schedule, now, now + LOOK_AHEAD):
+        today = datetime.combine(now.date(), time.min) - timedelta(seconds=1)
+        for when in recurrence.occurrences(schedule, today, now + LOOK_AHEAD):
             key = recurrence.date_key(when)
+            other = schedule.get("overrides", {}).get(key, {}).get("time")
+            if other:   # this one stream was moved to another time of its day
+                when = datetime.combine(when.date(), recurrence.parse_time(other))
+            if when <= now:
+                continue
             title, description, overridden = text_for(store, schedule, when)
             targets = [(dest, store.entry(schedule["id"], key, dest["id"]))
                        for dest in (store.destination(i) for i in schedule.get("destinations", []))
@@ -57,8 +63,19 @@ def upcoming(store, now=None, limit=12):
     return items[:limit]
 
 
-def create(store, vault, item, dest, now=None):
-    """Create one stream at one destination and write the outcome to the history. Returns the entry."""
+OLD = "2000-01-01T00:00:00"   # an entry's time that lets it be tried again at once
+
+
+def redo(entry, why):
+    """Mark something that was done as to be done again (it is gone, or what it shows has changed)."""
+    entry.update(status="failed", note=why, redo=True, at=OLD)
+
+
+def create(store, vault, item, dest, now=None, update=False):
+    """Create one stream at one destination and write the outcome to the history. Returns the entry.
+
+    With update, a stream that already exists is changed in place (title, description, time) and
+    keeps its link; without it, an existing stream is never touched."""
     now = now or datetime.now()
     schedule, when = item["schedule"], item["when"]
     old = store.entry(schedule["id"], item["date"], dest["id"]) or {}
@@ -67,6 +84,8 @@ def create(store, vault, item, dest, now=None):
              "destination_name": dest["name"], "kind": dest["kind"], "title": item["title"],
              "at": now.strftime("%Y-%m-%dT%H:%M:%S"), "attempts": old.get("attempts", 0) + 1,
              "status": "failed", "remote_id": "", "url": "", "note": ""}
+    if old.get("redo"):
+        entry["redo"] = True   # stays until it works
     try:
         found = titles.problems(item["title"], item["description"]) if dest["kind"] == "youtube" else \
             ([] if item["title"].strip() else ["The title is empty."])
@@ -80,8 +99,13 @@ def create(store, vault, item, dest, now=None):
         if dest["kind"] == "youtube":
             token = youtube.access_token(dest["client_id"], vault.get(dest["id"], "client_secret"),
                                          vault.get(dest["id"], "refresh_token"))
-            made = youtube.create_broadcast(token, item["title"], item["description"], start,
-                                            dest.get("options", {}))
+            exists = update and old.get("status") == "created" and youtube.broadcast(token, old["remote_id"])
+            if exists:
+                youtube.update_broadcast(token, old["remote_id"], item["title"], item["description"], start)
+                made = {"id": old["remote_id"], "url": old["url"], "note": old.get("note", "")}
+            else:
+                made = youtube.create_broadcast(token, item["title"], item["description"], start,
+                                                dest.get("options", {}))
         elif dest["kind"] == "facebook":
             made = facebook.create_live(dest["account_id"], vault.get(dest["id"], "page_token"),
                                         item["title"], item["description"], start,
@@ -97,6 +121,12 @@ def create(store, vault, item, dest, now=None):
         else:
             raise net.ApiError(f"Unknown kind of destination: {dest['kind']}")
         entry.update(status="created", remote_id=made["id"], url=made["url"], note=made["note"])
+        entry.pop("redo", None)
+        if dest["kind"] == "youtube" and old.get("url") and old["url"] != made["url"]:
+            for other, _ in item["targets"]:   # a new stream has a new link: websites must follow
+                shown = store.entry(schedule["id"], item["date"], other["id"])
+                if other["kind"] == "wix" and shown and shown["status"] == "created":
+                    redo(shown, "The YouTube stream was created again; the website gets the new link.")
     except (net.ApiError, vault_module.VaultError) as exc:
         entry["note"] = str(exc)
     except Exception as exc:  # a bug must not stop the other destinations
@@ -110,9 +140,15 @@ def run_due(store, vault, now=None):
     now = now or datetime.now()
     done = []
     for item in upcoming(store, now, limit=1000):
-        if item["skipped"] or item["create_at"] > now or item["when"] - now < MIN_AHEAD:
+        if item["skipped"]:
             continue
-        for dest, entry in item["targets"]:
+        for dest, _ in item["targets"]:
+            entry = store.entry(item["schedule"]["id"], item["date"], dest["id"])  # fresh: redo() may have marked it
+            again = bool(entry and entry.get("redo"))
+            if not again and item["create_at"] > now:
+                continue
+            if item["when"] - now < MIN_AHEAD and dest["kind"] != "wix":
+                continue
             if entry and entry["status"] == "created":
                 continue
             if entry and now - datetime.fromisoformat(entry["at"]) < RETRY_AFTER:
@@ -121,7 +157,62 @@ def run_due(store, vault, now=None):
     return done
 
 
+def verify(store, vault, now=None):
+    """Look at every coming stream that was created and see whether it is still there: the broadcast on
+    YouTube, and its link on the website. What is gone is marked to be done again. Returns how many."""
+    now = now or datetime.now()
+    gone = 0
+    for item in upcoming(store, now, limit=1000):
+        link = ""
+        for dest, _ in item["targets"]:
+            entry = store.entry(item["schedule"]["id"], item["date"], dest["id"])
+            if not entry or entry["status"] != "created":
+                continue
+            try:
+                if dest["kind"] == "youtube":
+                    token = youtube.access_token(dest["client_id"], vault.get(dest["id"], "client_secret"),
+                                                 vault.get(dest["id"], "refresh_token"))
+                    if youtube.broadcast(token, entry["remote_id"]):
+                        link = link or entry["url"]
+                    else:
+                        redo(entry, "This stream was no longer on YouTube (deleted?). It is created again.")
+                        gone += 1
+                elif dest["kind"] == "wix":
+                    o = dest["options"]
+                    shown = wix.item(vault.get(dest["id"], "api_key"), dest["account_id"], o["collection"],
+                                     o["item_id"]).get(o["url_field"])
+                    if shown != link:
+                        redo(entry, "The website no longer showed this stream. It is updated again.")
+                        gone += 1
+            except (net.ApiError, vault_module.VaultError) as exc:
+                entry["note"] = f"Could not be checked: {exc}"
+    store.save()
+    return gone
+
+
+def check(store, vault, now=None):
+    """The "Check now" button: verify what was created, then create what is due or was found missing."""
+    verify(store, vault, now)
+    return run_due(store, vault, now)
+
+
 def create_now(store, vault, item, now=None):
     """The user's "Schedule now": create a coming stream at once at every destination that lacks it."""
-    return [create(store, vault, item, dest, now) for dest, entry in item["targets"]
-            if not (entry and entry["status"] == "created")]
+    done = []
+    for dest, _ in item["targets"]:
+        entry = store.entry(item["schedule"]["id"], item["date"], dest["id"])
+        if not (entry and entry["status"] == "created"):
+            done.append(create(store, vault, item, dest, now))
+    return done
+
+
+def sync(store, vault, item, now=None):
+    """The user's "Update now", and what follows an edit of a scheduled stream: send the title,
+    description and time again to every destination, and create whatever is missing."""
+    return [create(store, vault, item, dest, now, update=True) for dest, _ in item["targets"]]
+
+
+def find(store, schedule_id, date_key, now=None):
+    """The coming stream of a schedule on a date, as upcoming() describes it now (or None)."""
+    return next((i for i in upcoming(store, now, limit=1000)
+                 if i["schedule"]["id"] == schedule_id and i["date"] == date_key), None)

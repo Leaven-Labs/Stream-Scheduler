@@ -102,13 +102,18 @@ QMenu {{ background: {c['card']}; border: 1px solid {c['line']}; padding: 4px; }
 QMenu::item {{ padding: 6px 22px; border-radius: 4px; }}
 QMenu::item:selected {{ background: {c['sel']}; }}
 QMenu::separator {{ height: 1px; background: {c['line']}; margin: 4px 6px; }}
-QLineEdit, QComboBox, QTimeEdit, QSpinBox {{ background: {c['card']}; border: 1px solid {c['line']};
+QLineEdit, QComboBox, QTimeEdit, QDateEdit, QSpinBox {{ background: {c['card']}; border: 1px solid {c['line']};
     border-radius: 8px; padding: 6px 10px; selection-background-color: {c['accent']}; selection-color: white; }}
-QLineEdit:focus, QComboBox:focus, QTimeEdit:focus, QSpinBox:focus, QPlainTextEdit:focus {{ border-color: {c['accent']}; }}
+QLineEdit:focus, QComboBox:focus, QTimeEdit:focus, QDateEdit:focus, QSpinBox:focus, QPlainTextEdit:focus {{ border-color: {c['accent']}; }}
 QLineEdit:disabled, QComboBox:disabled {{ color: {c['disabled']}; }}
 QTimeEdit::up-button, QTimeEdit::down-button, QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; }}
-QComboBox::drop-down {{ border: none; width: 26px; }}
-QComboBox::down-arrow {{ image: url({_chevron(c['sub'])}); width: 12px; height: 12px; }}
+QComboBox::drop-down, QDateEdit::drop-down {{ border: none; width: 26px; }}
+QCalendarWidget QWidget {{ alternate-background-color: {c['card']}; }}
+QCalendarWidget QAbstractItemView {{ background: {c['card']}; selection-background-color: {c['accent']};
+    selection-color: white; }}
+QCalendarWidget QToolButton {{ color: {c['text']}; background: transparent; border: none; padding: 4px 8px; }}
+QCalendarWidget QWidget#qt_calendar_navigationbar {{ background: {c['card']}; }}
+QComboBox::down-arrow, QDateEdit::down-arrow {{ image: url({_chevron(c['sub'])}); width: 12px; height: 12px; }}
 QComboBox QAbstractItemView {{ background: {c['card']}; border: 1px solid {c['line']};
     selection-background-color: {c['sel']}; selection-color: {c['text']}; outline: 0; }}
 QPlainTextEdit {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 6px;

@@ -3,8 +3,9 @@
 <p align="center">Schedules your weekly live streams on <b>YouTube</b> by itself, with the date of each<br>
 stream already in the title, and shows the coming stream on your <b>Wix</b> website.</p>
 
-> **v0.0.2 alpha.** YouTube scheduling is confirmed on a real channel. The Wix website update is new
-> and has not yet been tried against a real Wix site. Please report what you find.
+> **v0.0.3 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
+> site. Changing a stream that already exists on YouTube, and the re-check, are new and not yet
+> confirmed there. Please report what you find.
 
 ![Upcoming streams](docs/upcoming-dark.png)
 
@@ -15,8 +16,11 @@ stream already in the title, and shows the coming stream on your <b>Wix</b> webs
 - **Titles that fill in the date.** `Sunday Service - {date}` becomes *Sunday Service - November 15,
   2027* for that Sunday's stream. Also `{weekday}`, `{month}`, `{day}`, `{year}` and `{time}`, in the
   title and the description, with a choice of date formats.
-- **Override one stream.** Give a single date another title or description, or skip it, without
-  touching the schedule.
+- **One-time streams.** A schedule can also be for a single date, such as Christmas Eve.
+- **Change one stream.** Give a single date another title, description or start time, or skip it,
+  without touching the schedule. If the stream already exists, it is changed on YouTube and the website.
+- **Check and repair.** *Check now* sees whether every scheduled stream is still on YouTube and still
+  shown on the website, and puts back what is missing. *Update now* sends one stream again.
 - **Your website follows along.** After a stream is created on YouTube, the video player on a page
   of your Wix site is pointed at it.
 - **Guided setup.** A step-by-step guide for YouTube and for Wix explains what to click on Google's
@@ -86,7 +90,8 @@ stream is still more than 10 minutes away. A stream is never created twice.
   production*, or Google ends the sign-in every 7 days. Choose a stream key in the guide and your
   encoder keeps the same key every week. Live streaming must be enabled on the channel.
 - **Wix.** Wix has no way for an outside app to edit an element on a page. The guide has you connect
-  the page's video player to a small CMS collection once; the app then only changes the link in that
+  the page's YouTube element to a small CMS collection once (Wix's own Video Player cannot show a
+  stream that has not started); the app then only changes the link in that
   collection, which is live at once. The schedule must also send to YouTube. Publishing the whole site
   after each update is an option, off by default, because it also publishes any unfinished edits.
 - **Facebook is switched off.** Facebook no longer lets an app like this one schedule a live video the
@@ -103,8 +108,8 @@ stream is still more than 10 minutes away. A stream is never created twice.
 
 ## Not in this alpha
 
-Installers and code signing (the downloads are plain zip files); Facebook; thumbnails; one-off (non-weekly) streams; changing or deleting a stream on the platform
-after it was created; other platforms.
+Installers and code signing (the downloads are plain zip files); Facebook; thumbnails; deleting a
+stream on YouTube from the app; other platforms.
 
 ## For developers
 
