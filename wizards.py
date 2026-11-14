@@ -448,7 +448,7 @@ class FacebookWizard(Wizard):
             return ""
         if self.find_button.isEnabled():
             self.find_pages()
-        return self.error.text()
+        return self.error.text() or "Looking for your Pages ... choose one when they appear, then click Next."
 
     def find_pages(self):
         self.error.setText("")
