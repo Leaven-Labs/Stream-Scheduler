@@ -1,16 +1,20 @@
-The third alpha of Stream Scheduler: it schedules your weekly YouTube live streams by itself, with the
-date of each stream in the title, and shows the coming stream on your Wix website.
+The fourth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
+of each stream in the title, and shows the coming stream on your Wix website.
 
-> **Alpha.** YouTube scheduling is confirmed on a real channel. The Wix website update is new and has
-> not yet been tried against a real Wix site.
+> **Alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and site.
+> Changing a stream that already exists on YouTube, and the re-check, are new and not yet confirmed
+> there.
 
-## New in 0.0.2
+## New in 0.0.3
 
-- **Wix websites.** After a schedule creates its YouTube stream, the app points the video player on a
-  page of your Wix site at it (through a CMS collection the guide helps you set up). Publishing the
-  site afterwards is an option.
-- **Facebook is switched off.** Facebook no longer lets an app schedule a live video with a Page's
-  persistent stream key. Schedules skip a Facebook destination; you can remove it.
+- **Check now also re-checks.** It sees whether every scheduled stream is still on YouTube and still
+  shown on the website, creates again what was deleted, and gives the website the new link.
+- **Update now** on a scheduled stream sends its title, description and time again.
+- **Edit one stream, also after it was scheduled,** including its start time (8:15 to 8:30 for one
+  Sunday). A stream that exists is changed in place on YouTube and keeps its link.
+- **One-time streams:** a schedule can be for a single date.
+- **Wix guide corrected:** use Wix's YouTube element, not its Video Player; set the dataset to Read;
+  the steps match what the Wix dashboard shows.
 
 Updating: download, unzip and run the new version. Your destinations, schedules and sign-ins are kept.
 
@@ -34,9 +38,9 @@ must be running to save sign-ins.
 
 ## What it does
 
-- Weekly schedules, created on the platforms a chosen number of days before
+- Weekly and one-time schedules, created on YouTube a chosen number of days before
 - Titles and descriptions with `{date}`, `{weekday}`, `{month}`, `{day}`, `{year}`, `{time}`
-- Override or skip a single stream
+- Change or skip a single stream; check and repair what was scheduled
 - YouTube and Wix, each with a step-by-step setup guide
 - A persistent YouTube stream key: your encoder keeps the same key every week
 - Sign-ins kept in the system keychain

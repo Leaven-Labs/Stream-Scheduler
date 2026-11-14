@@ -513,14 +513,14 @@ class WixWizard(Wizard):
 
         self.add_step("Before you start", "Show the stream on your Wix website", [
             ui.rich("After a schedule creates its YouTube stream, Stream Scheduler can put that stream on a page "
-                    "of your Wix site, so the video player there always shows the coming service."),
+                    "of your Wix site, so the YouTube element there always shows the coming service."),
             ui.rich("Wix does not let an outside app edit an element on a page. The supported way is Wix's own "
-                    "<b>CMS</b>: a small collection holds the stream's link, the video player on your page is "
+                    "<b>CMS</b>: a small collection holds the stream's link, the YouTube element on your page is "
                     "connected to it, and the app only changes the link. You set this up once, in about 15 minutes."),
             steps("You must be the <b>owner or a co-owner</b> of the Wix site: only they can create API keys.",
                   "The schedule must also send to a <b>YouTube</b> channel. The website shows that stream.",
-                  "If your page has an embedded YouTube element today, step 3 replaces it with a video player "
-                  "that can be connected to the CMS. It looks the same to visitors."),
+                  "Your page needs Wix's <b>YouTube</b> element where the stream should show. If it has one "
+                  "today, it stays."),
             ui.callout("How this keeps your website safe",
                        f"The app keeps one API key, in <b>{vault.where()}</b>, encrypted with your login. In step 4 "
                        "you give the key only the permission to edit collection content, so it cannot change your "
@@ -529,39 +529,43 @@ class WixWizard(Wizard):
         self.add_step("Make a collection", "Make a collection for the stream", [
             steps(f"Open your site's dashboard at {link('https://manage.wix.com')} and choose <b>CMS</b> in the menu "
                   "at the left.",
-                  "Click <b>Create Collection</b>, then <b>Start from scratch</b>. Name it <b>Livestream</b> and "
-                  "create it as a normal (multiple item) collection. Its <b>Collection ID</b> is shown under the "
-                  "name: it should read <b>Livestream</b>.",
-                  "Add a field: click <b>+</b> (Add Field), choose the type <b>URL</b>, and name it <b>Video URL</b>. "
-                  "Open the field's settings and note its <b>Field key</b> (Field ID): it should read "
+                  "Click <b>Create Collection</b> and start from scratch. Name it <b>Livestream</b>. Its "
+                  "<b>Collection ID</b> is then also <b>Livestream</b>.",
+                  "Wix adds a few fields by itself (Title, Description, Image ...). Keep <b>Title</b>; the others "
+                  "do no harm and can stay empty.",
+                  "Click <b>+ Add Field</b> at the right end of the column headers. Choose the type <b>URL</b> and "
+                  "name it <b>Video URL</b>. In the same panel, check that its <b>Field ID</b> reads "
                   "<b>videoUrl</b>.",
-                  "The collection already has a <b>Title</b> field. Use it to name the item, for example "
-                  "<b>Sunday stream</b>. The app leaves it alone.",
+                  "Click <b>+ Add Item</b>. Give it a <b>Title</b> you will recognise, for example <b>Sunday "
+                  "stream</b>, and any YouTube link as Video URL for now. The app replaces the link each week and "
+                  "leaves the Title alone.",
+                  "Check that the item's <b>Status</b> is <b>Published</b>, and under <b>More Actions → Permissions "
+                  "& privacy</b> that everyone can view the content.",
                   "Optional: if the page should also show the stream's title, add a <b>Text</b> field named "
-                  "<b>Stream title</b> (field key <b>streamTitle</b>) for the app to write it in.",
-                  "Add <b>one item</b>: Title <b>Sunday stream</b>, Video URL any YouTube link for now. The app "
-                  "replaces both each week.",
-                  "Click <b>More actions → Permissions & privacy</b> and make sure <b>everyone can view</b> the "
-                  "content (the setting for 'Show content')."),
+                  "<b>Stream title</b> (Field ID <b>streamTitle</b>) for the app to write it in."),
             ui.callout("Good to know", "What is in a collection is live as soon as it changes. That is why the "
                        "website shows the new stream without anyone publishing the site.")])
 
-        self.add_step("Connect the player", "Connect the video player on your page", [
+        self.add_step("Connect the element", "Connect the YouTube element on your page", [
             steps("Open the site in the <b>Wix Editor</b> and go to the page that shows the stream.",
-                  "Click <b>Add Elements → Video & Music</b> and add a <b>single video player</b> of the kind that "
-                  "plays a YouTube link. Put it where the old YouTube element is, at the same size, and delete "
-                  "the old element.",
-                  "Select the new player and click the <b>Connect to CMS</b> icon. Click <b>Create Dataset</b>, "
-                  "choose the <b>Livestream</b> collection and click <b>Create</b>.",
-                  "Under <b>Connections</b>, set <b>Video source connects to</b> (or <b>Video URL connects "
-                  "to</b>) to <b>Video URL</b>.",
-                  "Click <b>Preview</b> to check that the player shows the link from your collection item.",
+                  "Use Wix's <b>YouTube</b> element (the one your page probably has already). Do <b>not</b> use "
+                  "Wix's own <b>Video Player</b>: it cannot show a stream that has not started yet and plays its "
+                  "sample video instead.",
+                  "Select the YouTube element and click the <b>Connect to CMS</b> icon. Click <b>Create "
+                  "Dataset</b>, choose the <b>Livestream</b> collection and click <b>Create</b>.",
+                  "Open <b>Dataset Settings</b> and set <b>Dataset mode</b> to <b>Read</b>. In Write mode the "
+                  "element shows nothing from the collection, and Filter is greyed out.",
+                  "Under <b>Filter</b>, click <b>Add Filter</b> and choose <b>Title</b> <b>is</b> the Title of "
+                  "your item, written exactly as in the collection.",
+                  "Back under <b>Connections</b>, connect the element's video link to the <b>Video URL</b> field.",
+                  "Click <b>Preview</b>: the element should show the link from your collection item. (The editor "
+                  "itself keeps showing the element's own sample video.)",
                   "Click <b>Publish</b>. This is the only time the site has to be published for this."),
-            ui.callout("Two services, two players?",
+            ui.callout("Two services, two elements?",
                        "Give the collection one item per service (for example Title <b>8:15 service</b> and "
-                       "<b>10:30 service</b>) and each player its own dataset, filtered to its item (dataset "
-                       "settings → Add filter → Title is ...). Then add this Wix destination once per player, "
-                       "choosing a different item each time, and tick one in each schedule.")])
+                       "<b>10:30 service</b>) and each YouTube element its own dataset, filtered to its item. Then "
+                       "add this Wix destination once per element, choosing a different item each time, and tick "
+                       "one in each schedule.")])
 
         self.add_step("Create an API key", "Create an API key", [
             steps(f"Open {link('https://manage.wix.com/account/api-keys')} (owner or co-owner only).",

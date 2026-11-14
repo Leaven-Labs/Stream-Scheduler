@@ -22,7 +22,8 @@ from vault import MemoryVault, Vault, VaultError
 
 
 class FakeNet:
-    """Stands in for net.send: records every request and answers from a list of (address part, status, json)."""
+    """Stands in for net.send: records every request and answers from a list of (address part, status,
+    json). A part may start with a method: "GET liveBroadcasts" answers only GET requests."""
 
     def __init__(self, routes):
         self.routes, self.calls = routes, []
@@ -30,12 +31,15 @@ class FakeNet:
     def __call__(self, method, url, headers, data, timeout):
         self.calls.append({"method": method, "url": url, "headers": headers, "data": data})
         for part, status, payload in self.routes:
-            if part in url:
+            wanted, _, part = part.rpartition(" ")
+            if part in url and wanted in ("", method):
                 return status, json.dumps(payload).encode()
         raise AssertionError("unexpected request: " + url)
 
 
 OK_ROUTES = [
+    ("GET liveBroadcasts", 200, {"items": [{"id": "yt123", "snippet": {}}]}),
+    ("PUT liveBroadcasts", 200, {"id": "yt123"}),
     ("oauth2.googleapis.com/token", 200, {"access_token": "ya29.access"}),
     ("liveBroadcasts/bind", 200, {"id": "yt123"}),
     ("liveBroadcasts", 200, {"id": "yt123"}),
@@ -257,6 +261,89 @@ class EngineTest(Base):
         self.assertIn("youtube.com/features", done[0]["note"])
 
 
+class ChangeTest(Base):
+    """One-time streams, moving one stream, updating and re-checking what was created."""
+
+    def setUp(self):
+        super().setUp()
+        self.store.schedules[0]["destinations"] = ["yt"]
+        self.sat = datetime(2027, 11, 13, 9, 0)
+
+    def test_one_time_stream(self):
+        once = sunday_schedule(id="s2", name="Christmas Eve", once="2027-12-24", weekdays=[], time="19:00",
+                               title="Christmas Eve - {date}", destinations=["yt"])
+        self.store.schedules[:] = [once]
+        self.assertEqual(recurrence.describe(once),
+                         "Once, on Friday, December 24, 2027 at 7:00 PM · created 1 day before at 9:00 AM")
+        items = engine.upcoming(self.store, datetime(2027, 10, 1))   # shown although it is months away
+        self.assertEqual([(i["when"], i["title"]) for i in items],
+                         [(datetime(2027, 12, 24, 19, 0), "Christmas Eve - December 24, 2027")])
+        self.assertEqual(engine.run_due(self.store, self.vault, datetime(2027, 12, 22, 12, 0)), [])
+        done = engine.run_due(self.store, self.vault, datetime(2027, 12, 23, 9, 0))
+        self.assertEqual([e["status"] for e in done], ["created"])
+        self.assertEqual(engine.upcoming(self.store, datetime(2027, 12, 24, 19, 1)), [])   # and then never again
+
+    def test_one_stream_moved_to_another_time(self):
+        self.store.schedules[0]["overrides"]["2027-11-14"] = {"time": "08:30"}
+        item = engine.upcoming(self.store, self.sat)[0]
+        self.assertEqual((item["when"], item["overridden"]), (datetime(2027, 11, 14, 8, 30), True))
+        self.assertEqual(engine.upcoming(self.store, self.sat)[1]["when"], datetime(2027, 11, 21, 8, 0))
+        engine.run_due(self.store, self.vault, self.sat)
+        body = json.loads(next(c for c in self.net.calls if c["method"] == "POST" and "liveBroadcasts?" in c["url"])["data"])
+        self.assertEqual(body["snippet"]["scheduledStartTime"],
+                         recurrence.to_utc(datetime(2027, 11, 14, 8, 30)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        # still listed between the schedule's time and the moved time on the day itself
+        self.assertEqual(engine.upcoming(self.store, datetime(2027, 11, 14, 8, 10))[0]["when"].minute, 30)
+
+    def test_editing_a_stream_that_exists_changes_it_in_place(self):
+        engine.run_due(self.store, self.vault, self.sat)
+        self.store.schedules[0]["overrides"]["2027-11-14"] = {"time": "08:30", "title": "Moved - {date}",
+                                                            "description": "New words"}
+        done = engine.sync(self.store, self.vault, engine.find(self.store, "s1", "2027-11-14", self.sat), self.sat)
+        put = next(c for c in self.net.calls if c["method"] == "PUT")
+        self.assertEqual(json.loads(put["data"]), {"id": "yt123", "snippet": {
+            "title": "Moved - November 14, 2027", "description": "New words",
+            "scheduledStartTime": recurrence.to_utc(datetime(2027, 11, 14, 8, 30)).strftime("%Y-%m-%dT%H:%M:%SZ")}})
+        self.assertEqual(len([c for c in self.net.calls if c["method"] == "POST" and "liveBroadcasts?" in c["url"]]), 1)
+        self.assertEqual((done[0]["status"], done[0]["title"], done[0]["url"], done[0]["when"]),
+                         ("created", "Moved - November 14, 2027", "https://www.youtube.com/watch?v=yt123",
+                          "2027-11-14T08:30"))
+        self.assertEqual(len(self.store.history), 1)
+
+    def test_update_now_creates_again_what_was_deleted(self):
+        engine.run_due(self.store, self.vault, self.sat)
+        self.net.routes = [("GET liveBroadcasts", 200, {"items": []}),
+                           ("liveBroadcasts", 200, {"id": "yt999"})] + OK_ROUTES
+        done = engine.sync(self.store, self.vault, engine.find(self.store, "s1", "2027-11-14", self.sat), self.sat)
+        self.assertEqual(done[0]["url"], "https://www.youtube.com/watch?v=yt999")
+        self.assertFalse(any(c["method"] == "PUT" for c in self.net.calls))
+
+    def test_check_finds_a_deleted_stream_and_creates_it_again(self):
+        engine.run_due(self.store, self.vault, self.sat)
+        self.assertEqual(engine.check(self.store, self.vault, datetime(2027, 11, 13, 9, 5)), [])   # all still there
+        self.net.routes = [("GET liveBroadcasts", 200, {"items": []}),
+                           ("liveBroadcasts", 200, {"id": "yt999"})] + OK_ROUTES
+        done = engine.check(self.store, self.vault, datetime(2027, 11, 13, 9, 6))
+        self.assertEqual([(e["status"], e["remote_id"]) for e in done], [("created", "yt999")])
+        self.assertNotIn("redo", self.store.history[0])
+        self.assertEqual(len(self.store.history), 1)
+
+    def test_check_that_cannot_reach_youtube_changes_nothing(self):
+        engine.run_due(self.store, self.vault, self.sat)
+        self.net.routes = [("GET liveBroadcasts", 500, {"error": {"message": "Backend error"}})] + OK_ROUTES
+        self.assertEqual(engine.check(self.store, self.vault, datetime(2027, 11, 13, 9, 6)), [])
+        self.assertEqual(self.store.history[0]["status"], "created")
+        self.assertIn("Could not be checked", self.store.history[0]["note"])
+
+    def test_a_stream_scheduled_early_by_hand_is_also_put_back(self):
+        early = datetime(2027, 11, 9, 12, 0)   # Tuesday: long before Saturday's create time
+        engine.create_now(self.store, self.vault, engine.find(self.store, "s1", "2027-11-14", early), early)
+        self.net.routes = [("GET liveBroadcasts", 200, {"items": []}),
+                           ("liveBroadcasts", 200, {"id": "yt999"})] + OK_ROUTES
+        done = engine.check(self.store, self.vault, datetime(2027, 11, 9, 12, 5))
+        self.assertEqual([(e["status"], e["remote_id"]) for e in done], [("created", "yt999")])
+
+
 class WixTest(Base):
     def setUp(self):
         super().setUp()
@@ -315,6 +402,27 @@ class WixTest(Base):
         done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
         self.assertIn("Wix refused the API key", done[1]["note"])
         self.assertNotIn("SECRET", done[1]["note"])
+
+    def test_the_website_follows_a_stream_that_was_created_again(self):
+        sat = datetime(2027, 11, 13, 9, 0)
+        engine.run_due(self.store, self.vault, sat)
+        shown = {"dataItem": {"id": "item-9", "data": {"_id": "item-9", "videoUrl": "https://www.youtube.com/watch?v=yt123"}}}
+        self.net.routes = [("GET wix-data/v2/items/item-9", 200, shown)] + self.net.routes
+        self.assertEqual(engine.check(self.store, self.vault, datetime(2027, 11, 13, 9, 5)), [])   # both still right
+        self.net.routes = [("GET liveBroadcasts", 200, {"items": []}),
+                           ("liveBroadcasts", 200, {"id": "yt999"})] + self.net.routes
+        self.net.calls.clear()
+        done = engine.check(self.store, self.vault, datetime(2027, 11, 13, 9, 6))
+        self.assertEqual([(e["kind"], e["status"]) for e in done], [("youtube", "created"), ("wix", "created")])
+        put = next(c for c in self.net.calls if c["method"] == "PUT")
+        self.assertEqual(json.loads(put["data"])["dataItem"]["data"]["videoUrl"], "https://www.youtube.com/watch?v=yt999")
+
+    def test_check_puts_back_a_link_someone_changed_on_the_website(self):
+        engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))   # the fake site still answers "https://old"
+        self.net.calls.clear()
+        done = engine.check(self.store, self.vault, datetime(2027, 11, 13, 9, 5))
+        self.assertEqual([(e["kind"], e["status"]) for e in done], [("wix", "created")])
+        self.assertTrue(any(c["method"] == "PUT" and "wix-data" in c["url"] for c in self.net.calls))
 
     def test_facebook_is_skipped_while_it_is_switched_off(self):
         engine.ENABLED = {"youtube", "wix"}

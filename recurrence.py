@@ -22,6 +22,9 @@ def date_key(when):
 def occurrences(schedule, after, until):
     """The stream times of a schedule later than `after`, up to `until`, in order."""
     at = parse_time(schedule["time"])
+    if schedule.get("once"):   # a single stream on one date; `until` does not hide it
+        when = datetime.combine(date.fromisoformat(schedule["once"]), at)
+        return [when] if after < when else []
     days = set(schedule.get("weekdays") or [])
     found, day = [], after.date()
     while day <= until.date():
@@ -45,15 +48,18 @@ def to_utc(local):
 
 def describe(schedule, clock="12"):
     """One line for the lists: "Every Sunday at 8:00 AM · created 1 day before at 9:00 AM"."""
-    from titles import WEEKDAYS, format_time
+    from titles import WEEKDAYS, format_date, format_time
     days = sorted(schedule.get("weekdays") or [])
+    lead = int(schedule.get("lead_days", 1))
+    made = (f"created {lead} day{'s' if lead != 1 else ''} before at "
+            f"{format_time(parse_time(schedule.get('create_time', '09:00')), clock)}")
+    if schedule.get("once"):
+        day = date.fromisoformat(schedule["once"])
+        return f"Once, on {format_date(day, 'weekday')} at {format_time(parse_time(schedule['time']), clock)} · {made}"
     if len(days) == 7:
         names = "day"
     elif not days:
         return "No weekday chosen"
     else:
         names = ", ".join(WEEKDAYS[d] for d in days[:-1]) + (" and " if len(days) > 1 else "") + WEEKDAYS[days[-1]]
-    lead = int(schedule.get("lead_days", 1))
-    return (f"Every {names} at {format_time(parse_time(schedule['time']), clock)} · created "
-            f"{lead} day{'s' if lead != 1 else ''} before at "
-            f"{format_time(parse_time(schedule.get('create_time', '09:00')), clock)}")
+    return f"Every {names} at {format_time(parse_time(schedule['time']), clock)} · {made}"

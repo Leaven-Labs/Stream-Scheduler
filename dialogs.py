@@ -1,8 +1,8 @@
 """The smaller windows: a schedule, the words of one single stream, and a YouTube channel's options."""
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTime
-from PySide6.QtWidgets import (QComboBox, QDialog, QGridLayout, QHBoxLayout, QLineEdit, QPlainTextEdit, QSpinBox,
+from PySide6.QtCore import QDate, Qt, QTime
+from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QGridLayout, QHBoxLayout, QLineEdit, QPlainTextEdit, QSpinBox,
                                QTimeEdit, QVBoxLayout, QWidget)
 
 import engine
@@ -88,6 +88,30 @@ class ScheduleDialog(QDialog):
             days.addWidget(b)
             self.days.append(b)
         days.addStretch(1)
+        days_box = QWidget()
+        days_box.setLayout(days)
+        days.setContentsMargins(0, 0, 0, 0)
+        self.repeat = ui.Segments([("weekly", "Every week"), ("once", "One time")], "once" if s.get("once") else "weekly")
+        self.date = QDateEdit(QDate.fromString(s["once"], "yyyy-MM-dd") if s.get("once")
+                              else QDate.currentDate().addDays(7))
+        self.date.setCalendarPopup(True)
+        self.date.setDisplayFormat("dddd, MMMM d, yyyy")
+        self.date.setMinimumWidth(250)
+        pad(self.date)
+        when_box = QVBoxLayout()
+        when_box.setSpacing(8)
+        when_box.addWidget(self.repeat, 0, Qt.AlignLeft)
+        when_box.addWidget(days_box)
+        when_box.addWidget(self.date, 0, Qt.AlignLeft)
+
+        def show_kind(*_):
+            once = self.repeat.buttons["once"].isChecked()
+            days_box.setVisible(not once)
+            self.date.setVisible(once)
+            self.update_preview()
+        self.repeat.changed.connect(show_kind)
+        self.date.dateChanged.connect(lambda *_: self.update_preview())
+        self.show_kind = show_kind
         self.time = time_edit(s["time"], self.clock)
         self.lead = QSpinBox()
         self.lead.setRange(1, recurrence.MAX_LEAD_DAYS)
@@ -130,7 +154,7 @@ class ScheduleDialog(QDialog):
         title_box.setSpacing(5)
         title_box.addWidget(self.title)
         title_box.addLayout(variable_row(self.title))
-        rows = [("Name", self.name), ("Stream days", days), ("Stream time", self.time),
+        rows = [("Name", self.name), ("Repeats", when_box), ("Stream time", self.time),
                 ("Create it", made), ("Title", title_box), ("Date written as", self.date_format),
                 ("Description", self.description), ("Send to", dest_row)]
         for i, (text, thing) in enumerate(rows):
@@ -158,7 +182,7 @@ class ScheduleDialog(QDialog):
         for signal in (self.title.textChanged, self.time.timeChanged, self.create_time.timeChanged,
                        self.lead.valueChanged, self.date_format.currentIndexChanged):
             signal.connect(self.update_preview)
-        self.update_preview()
+        self.show_kind()
 
     def value(self):
         s = dict(self.schedule)
@@ -167,14 +191,18 @@ class ScheduleDialog(QDialog):
                  create_time=self.create_time.time().toString("HH:mm"), title=self.title.text().strip(),
                  date_format=self.date_format.currentData(), description=self.description.toPlainText().strip(),
                  destinations=[i for i, b in self.dests.items() if b.isChecked()])
+        s.pop("once", None)
+        if self.repeat.buttons["once"].isChecked():
+            s["once"] = self.date.date().toString("yyyy-MM-dd")
         return s
 
     def update_preview(self, *_):
         s = self.value()
         now = datetime.now()
-        coming = recurrence.occurrences(s, now, now.replace(year=now.year + 1)) if s["weekdays"] else []
+        coming = recurrence.occurrences(s, now, now.replace(year=now.year + 1)) if s["weekdays"] or s.get("once") else []
         if not coming:
-            self.preview_title.setText("Choose at least one stream day")
+            self.preview_title.setText("That date and time have passed" if s.get("once")
+                                       else "Choose at least one stream day")
             self.preview_when.setText("")
             return
         when = coming[0]
@@ -191,8 +219,10 @@ class ScheduleDialog(QDialog):
         found = titles.problems(sample, s["description"])
         if not s["name"]:
             found.insert(0, "Give the schedule a name.")
-        if not s["weekdays"]:
+        if not s["weekdays"] and not s.get("once"):
             found.insert(0, "Choose at least one stream day.")
+        if s.get("once") and not recurrence.occurrences(s, now, now):
+            found.insert(0, "That date and time have passed. Choose a later one.")
         if found:
             self.error.setText(found[0])
             return
@@ -201,8 +231,8 @@ class ScheduleDialog(QDialog):
 
 
 class OverrideDialog(QDialog):
-    """Other words for one single stream. After accept(), `result` is the override: {} to go back to
-    the schedule's own text, or {"title", "description"}."""
+    """Other words, or another time, for one single stream. After accept(), `result` is the override:
+    {} to go back to the schedule's own, or some of {"title", "description", "time"}."""
 
     def __init__(self, parent, store, item):
         super().__init__(parent)
@@ -211,14 +241,24 @@ class OverrideDialog(QDialog):
         over = schedule.get("overrides", {}).get(item["date"], {})
         self.result = dict(over)
         self.setWindowTitle("Edit this stream")
-        self.resize(620, 430)
+        self.resize(620, 500)
+        self.clock = store.settings.get("clock", "12")
+        self.exists = any(e and e["status"] == "created" for _, e in item["targets"])
         col = QVBoxLayout(self)
         col.setContentsMargins(26, 22, 26, 18)
         col.setSpacing(10)
         col.addWidget(ui.label("Edit this stream only", "pagetitle"))
         col.addWidget(ui.label(
             f"{schedule['name']} · {titles.format_date(item['when'], 'weekday')}. The other streams of the "
-            "schedule keep the schedule's own title and description.", "sub", wrap=True))
+            "schedule keep the schedule's own title, description and time."
+            + (" This stream already exists: saving changes it on YouTube and on the website."
+               if self.exists else ""), "sub", wrap=True))
+        self.time = time_edit(over.get("time") or schedule["time"], self.clock)
+        time_row = QHBoxLayout()
+        time_row.addWidget(ui.label("Starts at", "strong"))
+        time_row.addWidget(self.time)
+        time_row.addStretch(1)
+        col.addLayout(time_row)
         self.title = QLineEdit(over.get("title") or schedule.get("title", ""))
         self.description = QPlainTextEdit(over["description"] if "description" in over
                                           else schedule.get("description", ""))
@@ -228,8 +268,8 @@ class OverrideDialog(QDialog):
         col.addWidget(ui.label("Description", "strong"))
         col.addWidget(self.description, 1)
         bar = bottom_bar(self, "Save for this stream", self.save)
-        if over.get("title") or "description" in over:
-            bar.insertWidget(0, ui.button("Use the schedule's text again", clicked=self.reset))
+        if over.get("title") or "description" in over or over.get("time"):
+            bar.insertWidget(0, ui.button("Use the schedule's own again", clicked=self.reset))
         col.addLayout(bar)
 
     def reset(self):
@@ -243,9 +283,16 @@ class OverrideDialog(QDialog):
             self.error.setText(found[0])
             return
         schedule = self.item["schedule"]
-        if (title, description) == (schedule.get("title", ""), schedule.get("description", "")):
-            return self.reset()   # nothing differs from the schedule
-        self.result.update(title=title, description=description)
+        at = self.time.time().toString("HH:mm")
+        when = datetime.combine(self.item["when"].date(), recurrence.parse_time(at))
+        if when - datetime.now() < engine.MIN_AHEAD:
+            self.error.setText("That time is less than 12 minutes away, or has passed.")
+            return
+        self.result = {k: v for k, v in self.result.items() if k == "skip"}
+        if (title, description) != (schedule.get("title", ""), schedule.get("description", "")):
+            self.result.update(title=title, description=description)
+        if at != schedule["time"]:
+            self.result["time"] = at
         self.accept()
 
 

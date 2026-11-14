@@ -157,3 +157,17 @@ def create_broadcast(token, title, description, start_utc, options):
         except net.ApiError as exc:
             note = f"Created, but the stream key could not be attached ({exc}). Choose it in YouTube Studio."
     return {"id": made["id"], "url": f"https://www.youtube.com/watch?v={made['id']}", "note": note}
+
+
+def broadcast(token, broadcast_id):
+    """A broadcast of the channel by its id, or None when it is not there (deleted on YouTube)."""
+    items = net.request("GET", f"{API}/liveBroadcasts", {"part": "snippet,status", "id": broadcast_id},
+                        token=token).get("items")
+    return items[0] if items else None
+
+
+def update_broadcast(token, broadcast_id, title, description, start_utc):
+    """Change the title, description and start time of a broadcast that has not started yet."""
+    net.request("PUT", f"{API}/liveBroadcasts", {"part": "snippet"}, token=token, body={
+        "id": broadcast_id, "snippet": {"title": title, "description": description,
+                                        "scheduledStartTime": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")}})

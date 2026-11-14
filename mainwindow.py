@@ -87,8 +87,9 @@ class UpcomingPage(Page):
     def __init__(self, window):
         super().__init__(window, "Upcoming streams",
                          "What your schedules will create next. Each stream is created by itself.")
-        self.check_button = ui.button("Check now", clicked=window.check,
-                                      tip="Create every stream whose time has come")
+        self.check_button = ui.button("Check now", clicked=window.check_all,
+                                      tip="See that every scheduled stream is still on YouTube and on the website, "
+                                          "put back what is missing, and create what is due")
         self.actions.addWidget(self.check_button)
 
     def fill(self):
@@ -164,8 +165,12 @@ class UpcomingPage(Page):
             if missing:
                 buttons.addWidget(ui.button("Schedule now", "mini", lambda: self.schedule_now(item),
                                             "Create it on the platforms right away"))
-                buttons.addWidget(ui.button("Edit", "mini", lambda: self.edit(item),
-                                            "Another title or description for this one stream"))
+            elif item["targets"]:
+                buttons.addWidget(ui.button("Update now", "mini", lambda: self.update_now(item),
+                                            "Send the title, description and time again, and put back whatever "
+                                            "is missing"))
+            buttons.addWidget(ui.button("Edit", "mini", lambda: self.edit(item),
+                                        "Another title, description or time for this one stream"))
         if missing or skipped or not item["targets"]:
             buttons.addWidget(ui.button("Restore" if skipped else "Skip", "mini", lambda: self.skip(item, not skipped)))
         buttons.addStretch(1)
@@ -184,7 +189,14 @@ class UpcomingPage(Page):
             else:
                 overrides.pop(item["date"], None)
             self.store.save()
-            self.refresh()
+            fresh = engine.find(self.store, item["schedule"]["id"], item["date"])
+            if dialog.exists and fresh:   # it is on the platforms already: change it there too
+                self.window_.work(lambda: engine.sync(self.store, self.vault, fresh))
+            else:
+                self.refresh()
+
+    def update_now(self, item):
+        self.window_.work(lambda: engine.sync(self.store, self.vault, item))
 
     def skip(self, item, on):
         over = self.override(item)
@@ -204,7 +216,8 @@ class UpcomingPage(Page):
 
 class SchedulesPage(Page):
     def __init__(self, window):
-        super().__init__(window, "Schedules", "A schedule repeats every week and remembers the title and description.")
+        super().__init__(window, "Schedules", "A schedule repeats every week, or is for one stream, and remembers the "
+                                              "title and description.")
         self.actions.addWidget(ui.button("New schedule", "primary", lambda: self.edit(None)))
 
     def fill(self):
@@ -227,6 +240,8 @@ class SchedulesPage(Page):
             chips.setSpacing(6)
             dests = [d for d in (self.store.destination(i) for i in s["destinations"])
                      if d and d["kind"] in engine.ENABLED]
+            if s.get("once") and not recurrence.occurrences(s, datetime.now(), datetime.now()):
+                chips.addWidget(ui.chip("Finished: you can delete it"))
             for d in dests:
                 chips.addWidget(ui.chip(f"{KIND_NAMES[d['kind']]} · {d['name']}"))
             if not dests:
@@ -583,7 +598,7 @@ class MainWindow(QMainWindow):
             self.tray.setToolTip(paths.APP_NAME)
             menu = QMenu()
             menu.addAction("Open Stream Scheduler", self.open_window)
-            menu.addAction("Check now", self.check)
+            menu.addAction("Check now", self.check_all)
             menu.addSeparator()
             menu.addAction("Quit", self.quit)
             self.tray.setContextMenu(menu)
@@ -629,7 +644,12 @@ class MainWindow(QMainWindow):
 
     # ---- the work ----
     def check(self):
+        """Every minute: create what is due."""
         self.work(lambda: engine.run_due(self.store, self.vault))
+
+    def check_all(self):
+        """The Check now button: also see that what was created is still there."""
+        self.work(lambda: engine.check(self.store, self.vault))
 
     def work(self, fn):
         """Run engine work off the window's thread, one at a time, then show what happened."""
