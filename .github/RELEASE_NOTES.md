@@ -1,8 +1,19 @@
-The first alpha of Stream Scheduler: it schedules your weekly YouTube and Facebook live streams by
+The second alpha of Stream Scheduler: it schedules your weekly YouTube and Facebook live streams by
 itself, with the date of each stream in the title.
 
-> **Alpha.** The calls to YouTube and Facebook have not yet been confirmed against real accounts.
-> Try it with an unlisted YouTube stream and a test Page first.
+> **Alpha.** YouTube scheduling has been confirmed on a real channel. The new Facebook request was
+> confirmed by hand on a real Page, but not yet from inside the app.
+
+## New in 0.0.1
+
+- **Facebook scheduling fixed.** Facebook refused the old request ("Scheduled Live has been
+  deprecated"). Streams are now created as scheduled events, and History links to the event.
+- **YouTube guide:** separate steps for the sign-in screen, the Branding page (what Google needs before
+  the app can be published) and publishing.
+- **Facebook guide:** Next on the Connect step looks for your Pages; help for when the token lists no
+  Page (choose the Page, or add `business_management` for a Page in a business portfolio).
+
+Updating: download, unzip and run the new version. Your destinations, schedules and sign-ins are kept.
 
 ## Download
 
@@ -22,7 +33,7 @@ Privacy & Security**, click **Open Anyway** next to Stream Scheduler and confirm
 **Linux.** Unpack and run `Stream Scheduler/Stream Scheduler`. A keyring (GNOME Keyring or KWallet)
 must be running to save sign-ins.
 
-## In this version
+## What it does
 
 - Weekly schedules, created on the platforms a chosen number of days before
 - Titles and descriptions with `{date}`, `{weekday}`, `{month}`, `{day}`, `{year}`, `{time}`

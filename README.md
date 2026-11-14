@@ -3,9 +3,9 @@
 <p align="center">Schedules your weekly live streams on <b>YouTube</b> and <b>Facebook</b> by itself,<br>
 with the date of each stream already in the title.</p>
 
-> **v0.0.0 alpha.** The scheduling logic is covered by tests, but the calls to YouTube and Facebook
-> have **not yet been tried against real accounts**. Try it with an unlisted YouTube stream and a test
-> Page first, and please report what you find.
+> **v0.0.1 alpha.** YouTube scheduling is confirmed on a real channel. Facebook scheduling was
+> reworked after Facebook refused the first approach and is not yet confirmed from inside the app.
+> Try it with an unlisted YouTube stream and a test Page first, and please report what you find.
 
 ![Upcoming streams](docs/upcoming-dark.png)
 
