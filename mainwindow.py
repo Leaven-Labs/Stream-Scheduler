@@ -21,7 +21,8 @@ import titles
 import ui
 import youtube
 from dialogs import KIND_NAMES, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog
-from wizards import FacebookWizard, YouTubeWizard
+import wix
+from wizards import WixWizard, YouTubeWizard
 
 CHECK_EVERY_MS = 60_000
 
@@ -85,7 +86,7 @@ class Page(QWidget):
 class UpcomingPage(Page):
     def __init__(self, window):
         super().__init__(window, "Upcoming streams",
-                         "What your schedules will create next. Each stream is created on its platforms by itself.")
+                         "What your schedules will create next. Each stream is created by itself.")
         self.check_button = ui.button("Check now", clicked=window.check,
                                       tip="Create every stream whose time has come")
         self.actions.addWidget(self.check_button)
@@ -97,8 +98,8 @@ class UpcomingPage(Page):
         if not self.store.destinations or not self.store.schedules:
             first = not self.store.destinations
             self.empty("Two steps to your first automatic stream" if first else "Now create a schedule",
-                       "1. Connect YouTube or a Facebook Page.   2. Create a schedule, for example every Sunday "
-                       "at 8:00 AM.\nFrom then on the streams appear on your platforms by themselves."
+                       "1. Connect your YouTube channel.   2. Create a schedule, for example every Sunday "
+                       "at 8:00 AM.\nFrom then on the streams appear on YouTube by themselves."
                        if first else "Say when you stream and what the title is. The app does the rest.",
                        ui.button("Connect a destination" if first else "New schedule", "primary",
                                  lambda: self.window_.show_page(2 if first else 1)))
@@ -143,7 +144,8 @@ class UpcomingPage(Page):
                 chips.addWidget(ui.chip(name))
             elif entry and entry["status"] == "created":
                 url = entry.get("url")
-                chips.addWidget(ui.chip(f"✓  {name} · Scheduled", "ok", "Open it in the browser" if url else "",
+                done_word = "Updated" if dest["kind"] == "wix" else "Scheduled"
+                chips.addWidget(ui.chip(f"✓  {name} · {done_word}", "ok", "Open it in the browser" if url else "",
                                         (lambda _=False, u=url: QDesktopServices.openUrl(QUrl(u))) if url else None))
             elif entry:
                 chips.addWidget(ui.chip(f"{name} · Failed", "no", entry.get("note", "")))
@@ -223,7 +225,8 @@ class SchedulesPage(Page):
             mid.addWidget(template)
             chips = QHBoxLayout()
             chips.setSpacing(6)
-            dests = [d for d in (self.store.destination(i) for i in s["destinations"]) if d]
+            dests = [d for d in (self.store.destination(i) for i in s["destinations"])
+                     if d and d["kind"] in engine.ENABLED]
             for d in dests:
                 chips.addWidget(ui.chip(f"{KIND_NAMES[d['kind']]} · {d['name']}"))
             if not dests:
@@ -269,12 +272,13 @@ class DestinationsPage(Page):
     def __init__(self, window):
         super().__init__(window, "Destinations", "Where your streams are scheduled. A guide takes you through each step.")
         self.actions.addWidget(ui.button("Add YouTube", "primary", lambda: self.add(YouTubeWizard)))
-        self.actions.addWidget(ui.button("Add Facebook Page", "primary", lambda: self.add(FacebookWizard)))
+        self.actions.addWidget(ui.button("Add Wix website", "primary", lambda: self.add(WixWizard)))
         self.results = {}
 
     def fill(self):
         if not self.store.destinations:
-            self.empty("Nothing connected yet", "Add a YouTube channel or a Facebook Page. You can add several of each.")
+            self.empty("Nothing connected yet", "Add a YouTube channel first. A Wix website can then show its "
+                       "streams. You can add several of each.")
         for d in self.store.destinations:
             card = ui.card()
             row = QHBoxLayout(card)
@@ -288,44 +292,42 @@ class DestinationsPage(Page):
                 o = d.get("options", {})
                 detail = (f"YouTube channel  ·  {o.get('privacy', 'public').capitalize()}  ·  "
                           f"Stream key: {o.get('stream_title') or 'chosen in YouTube Studio'}")
+            elif d["kind"] == "wix":
+                o = d.get("options", {})
+                detail = (f"Wix website  ·  collection {o.get('collection')}  ·  item “{o.get('item_title')}”  ·  "
+                          f"{'publishes the site' if o.get('publish') else 'shows the YouTube stream'}")
             else:
-                detail = "Facebook Page  ·  " + ("uses the Page's persistent stream key" if d.get("options", {}).get(
-                    "persistent_key") else "each stream gets its own stream key (see History)")
+                detail = "Facebook Page  ·  switched off in this version"
             mid.addWidget(ui.label(detail, "sub", wrap=True))
+            off = d["kind"] not in engine.ENABLED
             kind, text = self.results.get(d["id"], ("small", f"Sign-in kept in {self.vault.where()}"))
+            if off:
+                kind, text = "small", ("Facebook no longer lets an app schedule a live video with a Page's persistent "
+                                       "stream key, so schedules skip this destination. You can remove it.")
             mid.addWidget(ui.label(text, kind, wrap=True))
             row.addLayout(mid, 1)
-            row.addWidget(ui.button("Test", "mini", lambda _=False, d=d: self.test(d),
-                                    "Ask the platform whether the saved sign-in still works"), 0, Qt.AlignTop)
+            if not off:
+                row.addWidget(ui.button("Test", "mini", lambda _=False, d=d: self.test(d),
+                                        "Ask the platform whether the saved sign-in still works"), 0, Qt.AlignTop)
             if d["kind"] == "youtube":
                 row.addWidget(ui.button("Options", "mini", lambda _=False, d=d: self.options(d)), 0, Qt.AlignTop)
-            else:
-                on = d.get("options", {}).get("persistent_key", False)
-                row.addWidget(ui.button("Own key per stream" if on else "Use persistent key", "mini",
-                                        lambda _=False, d=d, on=on: self.persistent(d, not on),
-                                        "Whether new streams use the Page's persistent stream key"), 0, Qt.AlignTop)
             row.addWidget(ui.button("Remove", "mini", lambda _=False, d=d: self.remove(d)), 0, Qt.AlignTop)
             self.col.addWidget(card)
         self.col.addWidget(ui.callout(
             "Where your sign-ins are kept",
             f"Tokens and client secrets are stored in <b>{self.vault.where()}</b>, encrypted with your login to this "
-            "computer. They are never written to the app's settings file, and they are sent only to Google and "
-            "Meta. Removing a destination deletes its sign-in from this computer."))
+            "computer. They are never written to the app's settings file, and each is sent only to its own "
+            "platform (Google or Wix). Removing a destination deletes its sign-in from this computer."))
 
     def add(self, wizard_class):
         wizard = wizard_class(self, self.store, self.vault)
         if wizard.exec():
             self.refresh()
-            if self.store.schedules and ui.ask(self, "Add to schedules",
-                                               f"Send every existing schedule to “{wizard.destination['name']}” too?"):
+            if self.store.schedules and wizard.destination["kind"] != "wix" and ui.ask(
+                    self, "Add to schedules", f"Send every existing schedule to “{wizard.destination['name']}” too?"):
                 for s in self.store.schedules:
                     s["destinations"].append(wizard.destination["id"])
                 self.store.save()
-
-    def persistent(self, dest, on):
-        dest.setdefault("options", {})["persistent_key"] = on
-        self.store.save()
-        self.refresh()
 
     def options(self, dest):
         dialog = YouTubeOptionsDialog(self, dest)
@@ -343,7 +345,9 @@ class DestinationsPage(Page):
                 token = youtube.access_token(dest["client_id"], self.vault.get(dest["id"], "client_secret"),
                                              self.vault.get(dest["id"], "refresh_token"))
                 return youtube.channel(token)["title"]
-            return facebook.page_name(dest["account_id"], self.vault.get(dest["id"], "page_token"))
+            o = dest["options"]
+            data = wix.item(self.vault.get(dest["id"], "api_key"), dest["account_id"], o["collection"], o["item_id"])
+            return f"{dest['name']}: {data.get('title') or o['item_id']}"
 
         def done(name, error):
             self.results[dest["id"]] = ("error", str(error)) if error else ("good", f"✓  Works: connected to “{name}”")
@@ -372,6 +376,7 @@ class HistoryPage(Page):
         self.copy_button = ui.button("Copy link", clicked=self.copy)
         self.key_button = ui.button("Copy Facebook stream key", clicked=self.key,
                                     tip="The address and key for your encoder. Fetched now; never saved.")
+        self.key_button.setVisible("facebook" in engine.ENABLED)
         for b in (self.open_button, self.copy_button, self.key_button):
             self.actions.addWidget(b)
         self.table = None
@@ -396,7 +401,8 @@ class HistoryPage(Page):
             when, at = datetime.fromisoformat(e["when"]), datetime.fromisoformat(e["at"])
             ok = e["status"] == "created"
             cells = [short_day(when, self.clock), f"{KIND_NAMES.get(e['kind'], e['kind'])} · {e['destination_name']}",
-                     e["title"], "✓ Scheduled" if ok else "Failed", short_day(at, self.clock)]
+                     e["title"], ("✓ Updated" if e["kind"] == "wix" else "✓ Scheduled") if ok else "Failed",
+                     short_day(at, self.clock)]
             for column, text in enumerate(cells):
                 cell = QTableWidgetItem(text)
                 cell.setToolTip(e.get("note") or text if column == 3 else text)

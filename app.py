@@ -47,7 +47,7 @@ def uitest():
         from mainwindow import MainWindow
         from store import Store
         from vault import MemoryVault
-        from wizards import FacebookWizard, YouTubeWizard
+        from wizards import FacebookWizard, WixWizard, YouTubeWizard
         import engine
         for theme in ("light", "dark"):
             store, vault = Store(), MemoryVault()
@@ -64,7 +64,8 @@ def uitest():
             made = [ScheduleDialog(window, store), ScheduleDialog(window, store, store.schedules[0]),
                     OverrideDialog(window, store, engine.upcoming(store)[0]),
                     YouTubeOptionsDialog(window, store.destinations[0])]
-            for wizard in (YouTubeWizard(window, store, vault), FacebookWizard(window, store, vault)):
+            for wizard in (YouTubeWizard(window, store, vault), FacebookWizard(window, store, vault),
+                           WixWizard(window, store, vault)):
                 for i in range(len(wizard.checks)):
                     wizard.go(i)
                     wizard.grab()

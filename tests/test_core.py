@@ -66,6 +66,9 @@ class Base(unittest.TestCase):
         self.vault.set("yt", "refresh_token", "SECRET-REFRESH")
         self.vault.set("fb", "page_token", "SECRET-PAGE")
         self.net = FakeNet(OK_ROUTES)
+        enabled = engine.ENABLED   # the Facebook code is kept and tested, though the app has it switched off
+        engine.ENABLED = {"youtube", "facebook", "wix"}
+        self.addCleanup(setattr, engine, "ENABLED", enabled)
         real = net.send
         net.send = self.net
         self.addCleanup(setattr, net, "send", real)
@@ -252,6 +255,78 @@ class EngineTest(Base):
             {"reason": "liveStreamingNotEnabled"}]}})] + OK_ROUTES
         done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
         self.assertIn("youtube.com/features", done[0]["note"])
+
+
+class WixTest(Base):
+    def setUp(self):
+        super().setUp()
+        self.store.destinations.append(
+            {"id": "wx", "kind": "wix", "name": "Website", "account_id": "SITE-1",
+             "options": {"collection": "Livestream", "item_id": "item-9", "url_field": "videoUrl",
+                         "title_field": "title", "publish": False, "page_url": "https://example.org/live"}})
+        self.vault.set("wx", "api_key", "SECRET-WIX")
+        self.store.schedules[0]["destinations"] = ["wx", "yt"]   # the website is listed first on purpose
+        self.net.routes = [
+            ("site-publisher", 200, {}),
+            ("wix-data/v2/items/item-9", 200, {"dataItem": {"id": "item-9", "data": {
+                "_id": "item-9", "title": "Old", "videoUrl": "https://old", "notes": "keep me"}}})] + OK_ROUTES
+
+    def test_the_website_gets_the_youtube_link_after_youtube(self):
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertEqual([(e["kind"], e["status"]) for e in done], [("youtube", "created"), ("wix", "created")])
+        self.assertEqual(done[1]["url"], "https://example.org/live")
+        put = next(c for c in self.net.calls if c["method"] == "PUT")
+        self.assertEqual((put["headers"]["Authorization"], put["headers"]["wix-site-id"]), ("SECRET-WIX", "SITE-1"))
+        self.assertEqual(json.loads(put["data"]), {"dataCollectionId": "Livestream", "dataItem": {
+            "id": "item-9", "data": {"_id": "item-9", "title": "Sunday Service - November 14, 2027",
+                                     "videoUrl": "https://www.youtube.com/watch?v=yt123", "notes": "keep me"}}})
+        self.assertFalse(any("site-publisher" in c["url"] for c in self.net.calls))
+        self.assertEqual(engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 30)), [])
+
+    def test_waits_when_youtube_failed_and_follows_when_it_works(self):
+        ok = self.net.routes
+        self.net.routes = [("liveBroadcasts", 500, {"error": {"message": "Backend error"}})] + ok
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertEqual([(e["kind"], e["status"]) for e in done], [("youtube", "failed"), ("wix", "failed")])
+        self.assertIn("Waiting for this schedule's YouTube stream", done[1]["note"])
+        self.assertFalse(any(c["method"] == "PUT" for c in self.net.calls))
+        self.net.routes = ok
+        again = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 20))
+        self.assertEqual([(e["kind"], e["status"]) for e in again], [("youtube", "created"), ("wix", "created")])
+
+    def test_publish_when_asked_and_a_refused_publish_is_only_a_note(self):
+        self.store.destination("wx")["options"]["publish"] = True
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertTrue(any("site-publisher/v1/site/publish" in c["url"] for c in self.net.calls))
+        self.assertEqual((done[1]["status"], done[1]["note"]), ("created", ""))
+        self.store.history.clear()
+        self.net.routes = [("site-publisher", 403, {"message": "Permission denied"})] + self.net.routes
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertEqual(done[1]["status"], "created")
+        self.assertIn("did not publish the site", done[1]["note"])
+
+    def test_title_field_is_optional_and_a_bad_key_is_explained(self):
+        self.store.destination("wx")["options"]["title_field"] = ""
+        engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        put = next(c for c in self.net.calls if c["method"] == "PUT")
+        self.assertEqual(json.loads(put["data"])["dataItem"]["data"]["title"], "Old")
+        self.store.history.clear()
+        self.net.routes = [("wix-data", 403, {"message": "Forbidden"})] + self.net.routes
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertIn("Wix refused the API key", done[1]["note"])
+        self.assertNotIn("SECRET", done[1]["note"])
+
+    def test_facebook_is_skipped_while_it_is_switched_off(self):
+        engine.ENABLED = {"youtube", "wix"}
+        self.store.schedules[0]["destinations"] = ["fb", "yt"]
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertEqual([e["kind"] for e in done], ["youtube"])
+
+    def test_items_list(self):
+        import wix
+        self.net.routes = [("items/query", 200, {"dataItems": [{"id": "a", "data": {"_id": "a", "title": "Sunday"}}]})]
+        self.assertEqual(wix.items("k", "s", "Livestream"), [{"id": "a", "data": {"_id": "a", "title": "Sunday"}}])
+        self.assertEqual(json.loads(self.net.calls[0]["data"])["dataCollectionId"], "Livestream")
 
 
 class PlatformTest(Base):

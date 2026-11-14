@@ -10,8 +10,10 @@ def fill(store, vault):
          "client_id": "demo.apps.googleusercontent.com",
          "options": {"privacy": "public", "stream_id": "k", "stream_title": "Default stream key",
                      "made_for_kids": False, "auto_start": True, "auto_stop": True}},
-        {"id": "demo-fb", "kind": "facebook", "name": "Grace Community Church", "account_id": "1",
-         "options": {"persistent_key": True}}])
+        {"id": "demo-fb", "kind": "wix", "name": "Website", "account_id": "1",
+         "options": {"collection": "Livestream", "item_id": "i1", "item_title": "Sunday stream",
+                     "url_field": "videoUrl", "title_field": "title", "publish": False,
+                     "page_url": "https://www.example.org/live"}}])
     store.schedules.extend([
         {"id": "demo-s1", "name": "Sunday Service", "enabled": True, "weekdays": [6], "time": "08:00",
          "lead_days": 1, "create_time": "09:00", "title": "Sunday Service - {date}",
@@ -33,5 +35,5 @@ def fill(store, vault):
             "at": (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%S"), "attempts": 1,
             "status": "created" if yt else "failed", "remote_id": "abc" if yt else "",
             "url": "https://www.youtube.com/watch?v=abc" if yt else "",
-            "note": "" if yt else "(#200) The Page access token has expired. Connect the Page again."})
+            "note": "" if yt else "Wix refused the API key for this site. Check the key and the Site ID."})
     vault.set("demo-yt", "client_secret", "x")

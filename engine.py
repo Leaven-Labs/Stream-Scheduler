@@ -11,6 +11,7 @@ import net
 import recurrence
 import titles
 import vault as vault_module
+import wix
 import youtube
 from store import new_id
 
@@ -18,6 +19,9 @@ MIN_AHEAD = timedelta(minutes=12)    # Facebook refuses a start less than 10 min
 MAX_AHEAD = timedelta(days=7)        # ... or more than 7 days away
 RETRY_AFTER = timedelta(minutes=15)  # wait this long before trying a failed one again
 LOOK_AHEAD = timedelta(days=28)
+# The kinds of destination in use. Facebook is switched off: it no longer lets an app like this one
+# schedule a live video with the Page's persistent stream key. Its code (facebook.py) is kept.
+ENABLED = {"youtube", "wix"}
 
 
 def text_for(store, schedule, when):
@@ -42,7 +46,9 @@ def upcoming(store, now=None, limit=12):
             key = recurrence.date_key(when)
             title, description, overridden = text_for(store, schedule, when)
             targets = [(dest, store.entry(schedule["id"], key, dest["id"]))
-                       for dest in (store.destination(i) for i in schedule.get("destinations", [])) if dest]
+                       for dest in (store.destination(i) for i in schedule.get("destinations", []))
+                       if dest and dest["kind"] in ENABLED]
+            targets.sort(key=lambda t: t[0]["kind"] != "youtube")  # YouTube first: a website shows its link
             items.append({"schedule": schedule, "when": when, "date": key, "title": title,
                           "description": description, "overridden": overridden,
                           "skipped": bool(schedule.get("overrides", {}).get(key, {}).get("skip")),
@@ -66,7 +72,7 @@ def create(store, vault, item, dest, now=None):
             ([] if item["title"].strip() else ["The title is empty."])
         if found:
             raise net.ApiError(" ".join(found))
-        if not MIN_AHEAD - timedelta(minutes=2) <= when - now:
+        if dest["kind"] != "wix" and not MIN_AHEAD - timedelta(minutes=2) <= when - now:
             raise net.ApiError("Too late: the stream starts in less than 10 minutes.")
         if dest["kind"] == "facebook" and when - now > MAX_AHEAD:
             raise net.ApiError("Too early: Facebook accepts a stream at most 7 days ahead.")
@@ -80,6 +86,14 @@ def create(store, vault, item, dest, now=None):
             made = facebook.create_live(dest["account_id"], vault.get(dest["id"], "page_token"),
                                         item["title"], item["description"], start,
                                         dest.get("options", {}).get("persistent_key", False))
+        elif dest["kind"] == "wix":
+            link = next((e["url"] for d, e in ((d, store.entry(schedule["id"], item["date"], d["id"]))
+                                               for d, _ in item["targets"] if d["kind"] == "youtube")
+                         if e and e["status"] == "created" and e.get("url")), "")
+            if not link:
+                raise net.ApiError("Waiting for this schedule's YouTube stream: the website shows its link. "
+                                   "(The schedule must also send to a YouTube channel.)")
+            made = wix.show(dest, vault.get(dest["id"], "api_key"), link, item["title"])
         else:
             raise net.ApiError(f"Unknown kind of destination: {dest['kind']}")
         entry.update(status="created", remote_id=made["id"], url=made["url"], note=made["note"])
