@@ -12,7 +12,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
-    paths: [".github/workflows/release.yml", "tools/build.py", "requirements*.txt", "app.py"]
+    paths: [".github/workflows/release.yml", "tools/build.py", "tools/installer.iss", "requirements*.txt", "app.py"]
 permissions:
   contents: read
 jobs:
@@ -30,6 +30,9 @@ jobs:
       - name: Qt's system libraries (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: Inno Setup, which makes the installer (Windows)
+        if: runner.os == 'Windows'
+        run: choco upgrade innosetup --yes --no-progress
       - run: pip install -r requirements.txt -r requirements-build.txt
       - name: Core tests
         run: python -m unittest discover tests
@@ -46,10 +49,36 @@ jobs:
             *)       exe="dist/Stream Scheduler/Stream Scheduler" ;;
           esac
           "$exe" --uitest
+      - name: The installer installs, the installed program runs, and it uninstalls (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $quiet = "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          $dir = "$env:LOCALAPPDATA\Programs\Stream Scheduler"
+          $exe = "$dir\Stream Scheduler.exe"
+          $run = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+          $p = Start-Process "dist\Stream-Scheduler-Windows-Setup.exe" -ArgumentList $quiet -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the installer failed: $($p.ExitCode)" }
+          if (-not (Test-Path $exe)) { throw "not installed in $dir" }
+          $start = (Get-ItemProperty $run)."Stream Scheduler"
+          if ($start -ne "`"$exe`" --tray") { throw "start at sign-in is not set: $start" }
+          $p = Start-Process $exe -ArgumentList "--uitest" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the installed program failed its self-test: $($p.ExitCode)" }
+          # a running copy must not stop an update: start one, then install over it
+          Start-Process $exe -ArgumentList "--tray"
+          Start-Sleep 10
+          $p = Start-Process "dist\Stream-Scheduler-Windows-Setup.exe" -ArgumentList $quiet -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installing over a running copy failed: $($p.ExitCode)" }
+          if (Get-Process "Stream Scheduler" -ErrorAction SilentlyContinue) { throw "the running copy was not stopped" }
+          Start-Process "$dir\unins000.exe" -ArgumentList $quiet -Wait
+          foreach ($i in 1..30) { if (-not (Test-Path $exe)) { break }; Start-Sleep 1 }
+          if (Test-Path $exe) { throw "not uninstalled" }
+          if ((Get-ItemProperty $run)."Stream Scheduler") { throw "start at sign-in was left behind" }
       - uses: actions/upload-artifact@v4
         with:
           name: download-${{ runner.os }}
           path: |
+            dist/*.exe
             dist/*.zip
             dist/*.tar.gz
           if-no-files-found: error

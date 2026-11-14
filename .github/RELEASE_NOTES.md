@@ -16,18 +16,21 @@ of each stream in the title, and shows the coming stream on your Wix website.
 - **Wix guide corrected:** use Wix's YouTube element, not its Video Player; set the dataset to Read;
   the steps match what the Wix dashboard shows.
 
-Updating: download, unzip and run the new version. Your destinations, schedules and sign-ins are kept.
+Updating: download and run the new version (on Windows, the new Setup). Your destinations, schedules and
+sign-ins are kept.
 
 ## Download
 
 | Your computer | File |
 |---|---|
-| Windows 10 or 11 (64-bit) | `Stream-Scheduler-Windows.zip` |
+| Windows 10 or 11 (64-bit) | `Stream-Scheduler-Windows-Setup.exe` |
 | Mac with Apple silicon (M1 or newer) | `Stream-Scheduler-macOS.zip` |
 | Linux, 64-bit (Ubuntu 22.04 or newer) | `Stream-Scheduler-Linux-x86_64.tar.gz` |
 
-**Windows.** Unzip, open the folder, run **Stream Scheduler.exe**. It isn't code-signed yet, so if
-Windows says *"Windows protected your PC"*, click **More info** → **Run anyway**.
+**Windows.** Run **Stream-Scheduler-Windows-Setup.exe**. It installs for you alone, without an
+administrator prompt, and can start the app each time you sign in to Windows. It isn't code-signed yet,
+so if Windows says *"Windows protected your PC"*, click **More info** → **Run anyway**. To update, run
+the newer Setup: your destinations, schedules and sign-ins are kept.
 
 **Mac.** Unzip and drag **Stream Scheduler** to **Applications**. It isn't signed with an Apple
 developer ID yet, so the first time macOS refuses to open it: click **Done**, open **System Settings →

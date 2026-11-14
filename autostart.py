@@ -21,6 +21,18 @@ def command():
     return [exe, os.path.join(paths.program_dir(), "app.py"), "--tray"]
 
 
+def is_enabled():
+    """Whether starting at login is on now (the installer can switch it on too, so ask the system)."""
+    if sys.platform == "win32":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _WIN_KEY) as key:
+                return bool(winreg.QueryValueEx(key, paths.APP_NAME)[0])
+        except OSError:
+            return False
+    return os.path.exists(_MAC if sys.platform == "darwin" else _LINUX)
+
+
 def set_enabled(on):
     """Switch starting at login on or off. Raises OSError when the system refuses."""
     cmd = command()

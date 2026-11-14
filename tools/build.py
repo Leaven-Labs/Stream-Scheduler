@@ -1,14 +1,15 @@
 """Build the program for this system with PyInstaller and pack it for download.
 
-  python tools/build.py        -> dist/Stream-Scheduler-Windows.zip      (Stream Scheduler.exe in a folder)
+  python tools/build.py        -> dist/Stream-Scheduler-Windows-Setup.exe (the installer; needs Inno Setup 6)
                                   dist/Stream-Scheduler-macOS.zip        (Stream Scheduler.app)
                                   dist/Stream-Scheduler-Linux-x86_64.tar.gz
 
 Needs: pip install -r requirements.txt -r requirements-build.txt. The release workflow runs this on
-each system. The builds are not code-signed.
+each system. The builds are not code-signed. The Windows installer is described in tools/installer.iss.
 """
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -58,6 +59,21 @@ def icon():
     return None
 
 
+def installer():
+    """The Windows installer, made by Inno Setup from tools/installer.iss. Returns its path, or None."""
+    iscc = shutil.which("iscc") or os.path.join(
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Inno Setup 6", "ISCC.exe")
+    if not os.path.exists(iscc):
+        if os.environ.get("CI"):
+            raise SystemExit("Inno Setup (ISCC.exe) was not found: the installer cannot be built")
+        print("Inno Setup is not installed: no installer was built (https://jrsoftware.org/isinfo.php)")
+        return None
+    number = re.match(r"\d+(\.\d+)*", paths.VERSION).group()
+    subprocess.run([iscc, "/Qp", f"/DAppVersion={paths.VERSION}", f"/DAppVersionNumber={number}",
+                    os.path.join(root, "tools", "installer.iss")], check=True)
+    return os.path.join(root, "dist", "Stream-Scheduler-Windows-Setup.exe")
+
+
 def main():
     shutil.rmtree(os.path.join(root, "dist"), ignore_errors=True)
     args = [sys.executable, "-m", "PyInstaller", "app.py", "--name", NAME, "--noconfirm", "--clean",
@@ -74,7 +90,10 @@ def main():
 
     dist = os.path.join(root, "dist")
     if sys.platform == "win32":
-        out = shutil.make_archive(os.path.join(dist, "Stream-Scheduler-Windows"), "zip", dist, NAME)
+        out = installer()
+        if out is None:
+            print("built", os.path.join(dist, NAME), "(the program in a folder, not packed)")
+            return
     elif sys.platform == "darwin":
         out = os.path.join(dist, "Stream-Scheduler-macOS.zip")   # ditto keeps the app's links and flags
         subprocess.run(["ditto", "-c", "-k", "--keepParent", os.path.join(dist, NAME + ".app"), out], check=True)
