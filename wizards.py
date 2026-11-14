@@ -535,8 +535,10 @@ class WixWizard(Wizard):
                   "Add a field: click <b>+</b> (Add Field), choose the type <b>URL</b>, and name it <b>Video URL</b>. "
                   "Open the field's settings and note its <b>Field key</b> (Field ID): it should read "
                   "<b>videoUrl</b>.",
-                  "The collection already has a <b>Title</b> field (field key <b>title</b>). The app can write the "
-                  "stream's title there.",
+                  "The collection already has a <b>Title</b> field. Use it to name the item, for example "
+                  "<b>Sunday stream</b>. The app leaves it alone.",
+                  "Optional: if the page should also show the stream's title, add a <b>Text</b> field named "
+                  "<b>Stream title</b> (field key <b>streamTitle</b>) for the app to write it in.",
                   "Add <b>one item</b>: Title <b>Sunday stream</b>, Video URL any YouTube link for now. The app "
                   "replaces both each week.",
                   "Click <b>More actions → Permissions & privacy</b> and make sure <b>everyone can view</b> the "
@@ -556,9 +558,10 @@ class WixWizard(Wizard):
                   "Click <b>Preview</b> to check that the player shows the link from your collection item.",
                   "Click <b>Publish</b>. This is the only time the site has to be published for this."),
             ui.callout("Two services, two players?",
-                       "Add a second item to the collection and a second player whose dataset is filtered to that "
-                       "item (dataset settings → Add filter → Title is ...). Then add this Wix destination twice, "
-                       "choosing a different item each time, and use one in each schedule.")])
+                       "Give the collection one item per service (for example Title <b>8:15 service</b> and "
+                       "<b>10:30 service</b>) and each player its own dataset, filtered to its item (dataset "
+                       "settings → Add filter → Title is ...). Then add this Wix destination once per player, "
+                       "choosing a different item each time, and tick one in each schedule.")])
 
         self.add_step("Create an API key", "Create an API key", [
             steps(f"Open {link('https://manage.wix.com/account/api-keys')} (owner or co-owner only).",
@@ -581,7 +584,8 @@ class WixWizard(Wizard):
         self.site_id.setPlaceholderText("Site ID  (from the dashboard's address)")
         self.collection = QLineEdit("Livestream")
         self.url_field = QLineEdit("videoUrl")
-        self.title_field = QLineEdit("title")
+        self.title_field = QLineEdit()
+        self.title_field.setPlaceholderText("Optional, e.g. streamTitle. Empty: the app does not write the title.")
         self.page_url = QLineEdit()
         self.page_url.setPlaceholderText("Optional: the page's address, for the Open button (https://...)")
         self.name = QLineEdit("Website")
@@ -592,7 +596,7 @@ class WixWizard(Wizard):
         grid.setVerticalSpacing(8)
         rows = [("Name in this app", self.name), ("API key", self.api_key), ("Site ID", self.site_id),
                 ("Collection ID", self.collection), ("Field key of the video link", self.url_field),
-                ("Field key of the title", self.title_field), ("Page", self.page_url)]
+                ("Field key for the stream's title", self.title_field), ("Page", self.page_url)]
         for i, (text, widget) in enumerate(rows):
             grid.addWidget(ui.label(text, "strong"), i, 0)
             grid.addWidget(widget, i, 1)
@@ -618,8 +622,7 @@ class WixWizard(Wizard):
             ui.callout("Publishing is usually not needed, and it publishes everything",
                        "The new stream shows on the website without publishing. If you switch this on, Wix "
                        "publishes <b>every change saved in the editor</b>, including a half-finished edit someone "
-                       "else left there. Leave it off unless your page does not update without it. Leave the "
-                       "title's field key empty if the app should not write the title.", "warn", "warn")],
+                       "else left there. Leave it off unless your page does not update without it.", "warn", "warn")],
             check=self.check_items)
         self.ready()
 
