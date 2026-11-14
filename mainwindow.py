@@ -483,7 +483,7 @@ class SettingsPage(Page):
         clock.changed.connect(lambda key: self.set("clock", key))
         tray = ui.Switch(s["tray"])
         tray.toggled.connect(lambda on: self.set("tray", on))
-        auto = ui.Switch(s["autostart"])
+        auto = ui.Switch(autostart.is_enabled())
         auto.toggled.connect(self.set_autostart)
         folder = ui.button("Open folder", clicked=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(paths.data_dir())))
         self.section("Look", [("Theme", "Auto follows your system.", theme),

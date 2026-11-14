@@ -39,12 +39,15 @@ Download from the **[Releases](../../releases)** page:
 
 | Your computer | Download |
 |---|---|
-| Windows 10 or 11 (64-bit) | `Stream-Scheduler-Windows.zip` |
+| Windows 10 or 11 (64-bit) | `Stream-Scheduler-Windows-Setup.exe` |
 | Mac with Apple silicon (M1 or newer) | `Stream-Scheduler-macOS.zip` |
 | Linux, 64-bit (Ubuntu 22.04 or newer) | `Stream-Scheduler-Linux-x86_64.tar.gz` |
 
-**Windows.** Unzip and run **Stream Scheduler.exe** in the folder. It isn't code-signed yet, so if
-Windows says *"Windows protected your PC"*, click **More info** → **Run anyway**.
+**Windows.** Run **Stream-Scheduler-Windows-Setup.exe**. It installs for you alone, without an
+administrator prompt, and can start the app each time you sign in to Windows. It isn't code-signed yet,
+so if Windows says *"Windows protected your PC"*, click **More info** → **Run anyway**. To update, run
+the newer Setup: your destinations, schedules and sign-ins are kept. (`Stream-Scheduler-Windows.zip` is
+the same program without an installer: unzip and run **Stream Scheduler.exe**.)
 
 **Mac.** Unzip and drag **Stream Scheduler** to **Applications**. It isn't signed with an Apple
 developer ID yet: the first time, click **Done**, open **System Settings → Privacy & Security**, and
@@ -103,12 +106,14 @@ stream is still more than 10 minutes away. A stream is never created twice.
 
 | | |
 |---|---|
+| The program (Windows installer) | `%LOCALAPPDATA%\Programs\Stream Scheduler`, replaced by each update |
 | Settings, schedules, history | Windows `%APPDATA%\Stream Scheduler` · Mac `~/Library/Application Support/Stream Scheduler` · Linux `~/.config/stream-scheduler` |
 | Tokens and client secrets | Windows Credential Manager · macOS Keychain · Linux Secret Service (GNOME Keyring, KWallet) |
 
 ## Not in this alpha
 
-Installers and code signing (the downloads are plain zip files); Facebook; thumbnails; deleting a
+Code signing; installers for Mac and Linux; running before anyone has signed in to the computer;
+Facebook; thumbnails; deleting a
 stream on YouTube from the app; other platforms.
 
 ## For developers
@@ -117,7 +122,8 @@ Python and Qt (PySide6), standard library for HTTPS.
 
 | File | What it holds |
 |---|---|
-| `app.py` | the start: the window, `--tray`, `--run`, `--uitest` |
+| `app.py` | the start: the window, `--tray`, `--run`, `--quit`, `--uitest` |
+| `tools/build.py`, `tools/installer.iss` | the downloads; the Windows installer (Inno Setup) |
 | `engine.py` | which streams are coming, and creating the ones that are due |
 | `recurrence.py`, `titles.py` | when streams are; filling `{date}` into titles |
 | `youtube.py`, `wix.py`, `net.py` | the platforms' APIs (`facebook.py` is kept but switched off) |
