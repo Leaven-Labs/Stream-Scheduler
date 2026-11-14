@@ -425,7 +425,7 @@ class FacebookWizard(Wizard):
             ui.callout("What is kept, and what is not",
                        f"Kept, in {vault.where()}: the access key of the Page you choose. <b>Not kept:</b> the App "
                        "secret and the token you pasted. They are used once, now, and then forgotten.")],
-            check=lambda: "" if self.found else "Click 'Find my Pages' first.")
+            check=self.check_pages)
 
         self.add_step("Go public", "One last thing on Meta's side", [
             ui.rich("A new Meta app starts in <b>Development</b> mode. In that mode, what the app posts can be "
@@ -441,6 +441,14 @@ class FacebookWizard(Wizard):
                        "the first stream that your usual key takes it live; if not, the History page shows why "
                        "and lets you copy that stream's own key.", "warn", "warn")])
         self.ready()
+
+    def check_pages(self):
+        """Next on the Connect step: with no Pages yet, look for them instead of only saying so."""
+        if self.found:
+            return ""
+        if self.find_button.isEnabled():
+            self.find_pages()
+        return self.error.text()
 
     def find_pages(self):
         self.error.setText("")
@@ -471,7 +479,8 @@ class FacebookWizard(Wizard):
         for p in pages:
             self.page.addItem(p["name"], p["id"])
         self.page.setEnabled(True)
-        self.find_state.setText(f"✓  Found {len(pages)} Page{'s' if len(pages) != 1 else ''}. Choose one below.")
+        self.find_state.setText(f"✓  Found {len(pages)} Page{'s' if len(pages) != 1 else ''}. Choose one below, "
+                                "then click Next.")
         self.app_secret.clear()   # used; forget them
         self.user_token.clear()
 
