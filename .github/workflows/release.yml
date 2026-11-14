@@ -1,0 +1,75 @@
+name: Release
+# Builds the program for Windows, macOS and Linux.
+# - On a pull request: builds only (the downloads are attached to the run), to prove the build works.
+# - Run by hand (Actions -> Release -> Run workflow) or on a pushed tag v*: also publishes a GitHub release.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of the release to publish (created if missing)"
+        required: true
+        default: v0.0.0
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [".github/workflows/release.yml", "tools/build.py", "requirements*.txt", "app.py"]
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Qt's system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - run: pip install -r requirements.txt -r requirements-build.txt
+      - name: Core tests
+        run: python -m unittest discover tests
+      - name: Build
+        run: python tools/build.py
+      - name: The built program makes every window (self-test)
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          case "$RUNNER_OS" in
+            Windows) exe="dist/Stream Scheduler/Stream Scheduler.exe" ;;
+            macOS)   exe="dist/Stream Scheduler.app/Contents/MacOS/Stream Scheduler" ;;
+            *)       exe="dist/Stream Scheduler/Stream Scheduler" ;;
+          esac
+          "$exe" --uitest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: download-${{ runner.os }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ls -l downloads
+          gh release create "$TAG" downloads/* --target "$GITHUB_SHA" --prerelease \
+            --title "Stream Scheduler $TAG (alpha)" --notes-file .github/RELEASE_NOTES.md
