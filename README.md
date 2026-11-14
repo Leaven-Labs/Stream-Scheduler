@@ -3,7 +3,7 @@
 <p align="center">Schedules your weekly live streams on <b>YouTube</b> by itself, with the date of each<br>
 stream already in the title, and shows the coming stream on your <b>Wix</b> website.</p>
 
-> **v0.0.3 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
+> **v0.0.4 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
 > site. Changing a stream that already exists on YouTube, and the re-check, are new and not yet
 > confirmed there. Please report what you find.
 

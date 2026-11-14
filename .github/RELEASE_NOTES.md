@@ -1,20 +1,24 @@
-The fourth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
+The fifth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
 of each stream in the title, and shows the coming stream on your Wix website.
 
 > **Alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and site.
 > Changing a stream that already exists on YouTube, and the re-check, are new and not yet confirmed
 > there.
 
-## New in 0.0.3
+## New in 0.0.4
 
-- **Check now also re-checks.** It sees whether every scheduled stream is still on YouTube and still
-  shown on the website, creates again what was deleted, and gives the website the new link.
-- **Update now** on a scheduled stream sends its title, description and time again.
-- **Edit one stream, also after it was scheduled,** including its start time (8:15 to 8:30 for one
-  Sunday). A stream that exists is changed in place on YouTube and keeps its link.
-- **One-time streams:** a schedule can be for a single date.
-- **Wix guide corrected:** use Wix's YouTube element, not its Video Player; set the dataset to Read;
-  the steps match what the Wix dashboard shows.
+- **A Windows installer.** `Stream-Scheduler-Windows-Setup.exe` replaces the zip. It installs for you
+  alone, without an administrator prompt, and can start the app each time you sign in to Windows.
+  Later versions update by running the newer Setup.
+- **Checks when it starts.** Each time the app starts, also hidden at sign-in, it sees whether every
+  scheduled stream is still on YouTube and on the website, creates again what is gone, and creates
+  what came due while the computer was off.
+- **Start when I log in** in Settings shows what the system really does.
+
+Coming from an unzipped Windows version: run the Setup. It stops the old copy and keeps your
+destinations, schedules and sign-ins; afterwards, delete the old unzipped folder yourself. The installer
+is new: it passed its automated install, update and uninstall test, and has not yet been used on a
+computer with earlier settings, so copy `%APPDATA%\Stream Scheduler` somewhere first.
 
 Updating: download and run the new version (on Windows, the new Setup). Your destinations, schedules and
 sign-ins are kept.

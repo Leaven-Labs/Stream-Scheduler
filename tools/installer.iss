@@ -1,5 +1,5 @@
 ; The Windows installer (Inno Setup 6.3 or newer). tools/build.py runs this after PyInstaller:
-;   iscc /DAppVersion=0.0.3-alpha /DAppVersionNumber=0.0.3 tools\installer.iss
+;   iscc /DAppVersion=0.0.4-alpha /DAppVersionNumber=0.0.4 tools\installer.iss
 ;   -> dist\Stream-Scheduler-Windows-Setup.exe
 ;
 ; It installs for the person who runs it, with no administrator prompt:
