@@ -150,7 +150,8 @@ class EngineTest(Base):
         self.assertIn("streamId=key1", by("liveBroadcasts/bind")["url"])
         live = by("/999/live_videos")
         form = dict(urllib.parse.parse_qsl(live["data"].decode()))
-        self.assertEqual(form["status"], "SCHEDULED_UNPUBLISHED")
+        self.assertEqual(form["status"], "UNPUBLISHED")
+        self.assertEqual(form["description"], "Join us on Sunday.")
         self.assertEqual(json.loads(form["event_params"]), {"start_time": int(start.timestamp())})
         self.assertEqual(live["headers"]["Authorization"], "Bearer SECRET-PAGE")
 
@@ -215,6 +216,14 @@ class EngineTest(Base):
         self.assertIn("connect it again", done[0]["note"])
         self.assertIn("7 days", done[0]["note"])
         self.assertIn("missing from the keychain", done[1]["note"])
+
+    def test_facebook_event_link_and_description_is_never_empty(self):
+        self.net.routes = [("/live_videos", 200, {"id": "fb456", "event_id": "777"})] + OK_ROUTES
+        self.store.schedules[0].update(destinations=["fb"], description="")
+        done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
+        self.assertEqual(done[0]["url"], "https://www.facebook.com/events/777")
+        form = dict(urllib.parse.parse_qsl(self.net.calls[0]["data"].decode()))
+        self.assertEqual(form["description"], "Sunday Service - November 14, 2027")
 
     def test_facebook_persistent_key(self):
         self.store.destination("fb")["options"] = {"persistent_key": True}
