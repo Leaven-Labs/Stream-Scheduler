@@ -7,10 +7,11 @@ import json
 import os
 import secrets
 import threading
+from datetime import datetime
 
 import paths
 
-DEFAULT_SETTINGS = {"theme": "auto", "clock": "12", "tray": True, "autostart": False}
+DEFAULT_SETTINGS = {"theme": "auto", "clock": "12", "tray": True, "autostart": False, "update_check": True}
 HISTORY_LIMIT = 500
 
 
@@ -32,13 +33,40 @@ class Store:
                     data = json.load(fh)
             except FileNotFoundError:
                 data = {}
-            if not isinstance(data, dict):
-                raise ValueError(f"{self.path} is not a settings file")
-            data.setdefault("version", 1)
-            data["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
-            for key in ("destinations", "schedules", "history"):
-                data.setdefault(key, [])
-            self.data = data
+            self.data = self._whole(data, self.path)
+
+    @staticmethod
+    def _whole(data, where):
+        """The data with every part present, or ValueError when it is not this app's data."""
+        if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list)
+                                                 for k in ("destinations", "schedules", "history")):
+            raise ValueError(f"{where} is not a settings file")
+        data.setdefault("version", 1)
+        data["settings"] = {**DEFAULT_SETTINGS, **(data.get("settings") or {})}
+        for key in ("destinations", "schedules", "history"):
+            data.setdefault(key, [])
+        return data
+
+    def backup(self, path):
+        """Write everything to a file of the user's choice. No secret is in it: sign-ins stay in the keychain."""
+        with self.lock:
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({"backup_of": paths.APP_NAME, "app_version": paths.VERSION,
+                           "made": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "data": self.data},
+                          fh, indent=2, ensure_ascii=False)
+
+    def restore(self, path):
+        """Replace everything with a backup file's content. Raises ValueError for a file that is not one."""
+        with open(path, encoding="utf-8") as fh:
+            try:
+                saved = json.load(fh)
+            except ValueError:
+                raise ValueError("This file is not a Stream Scheduler backup.") from None
+        if not isinstance(saved, dict) or saved.get("backup_of") != paths.APP_NAME:
+            raise ValueError("This file is not a Stream Scheduler backup.")
+        with self.lock:
+            self.data = self._whole(saved.get("data"), "The backup")
+            self.save()
 
     def save(self):
         """Write to a new file, then swap it in: a crash never leaves half a file."""

@@ -9,7 +9,8 @@ def fill(store, vault):
         {"id": "demo-yt", "kind": "youtube", "name": "Grace Community Church", "account_id": "UCdemo",
          "client_id": "demo.apps.googleusercontent.com",
          "options": {"privacy": "public", "stream_id": "k", "stream_title": "Default stream key",
-                     "made_for_kids": False, "auto_start": True, "auto_stop": True}},
+                     "made_for_kids": False, "auto_start": True, "auto_stop": True, "latency": "normal",
+                     "category": "29", "playlist": "https://www.youtube.com/playlist?list=PLdemo"}},
         {"id": "demo-fb", "kind": "wix", "name": "Website", "account_id": "1",
          "options": {"collection": "Livestream", "item_id": "i1", "item_title": "Sunday stream",
                      "url_field": "videoUrl", "title_field": "title", "publish": False,
@@ -19,9 +20,16 @@ def fill(store, vault):
          "lead_days": 1, "create_time": "09:00", "title": "Sunday Service - {date}",
          "description": "Join us live this {weekday} at {time}.", "date_format": "long",
          "destinations": ["demo-yt", "demo-fb"], "overrides": {}},
-        {"id": "demo-s2", "name": "Midweek Prayer", "enabled": True, "weekdays": [2], "time": "19:00",
-         "lead_days": 2, "create_time": "12:00", "title": "Midweek Prayer | {month} {day}",
+        {"id": "demo-s2", "name": "Lent Evening Prayer", "enabled": True, "weekdays": [2], "time": "19:00",
+         "lead_days": 2, "create_time": "12:00", "title": "{series}, week {number} | {month} {day}",
+         "series": "Lent", "starts": (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d"),
+         "until": (datetime.now() + timedelta(days=28)).strftime("%Y-%m-%d"), "privacy": "unlisted",
          "description": "", "date_format": "long", "destinations": ["demo-yt"], "overrides": {}}])
+    store.data["notify"] = {"channels": {"pushover": {"on": True},
+                                         "email": {"on": True, "host": "smtp.example.org", "port": 587,
+                                                   "security": "starttls", "user": "streams@example.org",
+                                                   "to": "tech-team@example.org"}},
+                            "events": {"summary": True}}
     now = datetime.now()
     items = engine.upcoming(store, now)
     first = next(i for i in items if i["schedule"]["id"] == "demo-s1")

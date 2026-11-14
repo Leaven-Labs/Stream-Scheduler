@@ -10,7 +10,9 @@ One entry per secret: service "Stream Scheduler", name "<destination id>:<what>"
 import paths
 
 SERVICE = paths.APP_NAME
-SECRETS = {"youtube": ["client_secret", "refresh_token"], "facebook": ["page_token"], "wix": ["api_key"]}
+SECRETS = {"youtube": ["client_secret", "refresh_token"], "facebook": ["page_token"], "wix": ["api_key"],
+           "wordpress": ["app_password"], "webhook": ["url"]}
+NOTIFY = "notify"   # the id under which the notification channels' secrets are kept (notify.py)
 
 
 class VaultError(Exception):
@@ -63,16 +65,33 @@ class Vault:
             raise VaultError(f"The keychain could not be read ({type(exc).__name__}). Is it unlocked?") from None
         if not value:
             raise VaultError("The saved sign-in for this destination is missing from the keychain. "
-                             "Remove the destination and connect it again.")
+                             "Use Reconnect on the Destinations page.")
         return value
+
+    def has(self, dest_id, name):
+        try:
+            self.get(dest_id, name)
+            return True
+        except VaultError:
+            return False
+
+    def remove(self, dest_id, name):
+        """Delete one secret. Nothing happens when it was never saved."""
+        try:
+            self._keyring().delete_password(SERVICE, f"{dest_id}:{name}")
+        except Exception:
+            pass  # was never saved, or the keychain is gone: nothing left to delete
 
     def forget(self, dest_id, kind):
         """Delete every secret of a destination (when it is removed)."""
         for name in SECRETS.get(kind, []):
-            try:
-                self._keyring().delete_password(SERVICE, f"{dest_id}:{name}")
-            except Exception:
-                pass  # was never saved, or the keychain is gone: nothing left to delete
+            self.remove(dest_id, name)
+
+    def move(self, kind, from_id, to_id):
+        """Give the secrets of one destination to another id (a destination that was connected again)."""
+        for name in SECRETS.get(kind, []):
+            self.set(to_id, name, self.get(from_id, name))
+        self.forget(from_id, kind)
 
 
 class MemoryVault(Vault):
@@ -90,9 +109,8 @@ class MemoryVault(Vault):
     def get(self, dest_id, name):
         if f"{dest_id}:{name}" not in self.items:
             raise VaultError("The saved sign-in for this destination is missing from the keychain. "
-                             "Remove the destination and connect it again.")
+                             "Use Reconnect on the Destinations page.")
         return self.items[f"{dest_id}:{name}"]
 
-    def forget(self, dest_id, kind):
-        for name in SECRETS.get(kind, []):
-            self.items.pop(f"{dest_id}:{name}", None)
+    def remove(self, dest_id, name):
+        self.items.pop(f"{dest_id}:{name}", None)

@@ -21,6 +21,9 @@ DATE_FORMATS = {
     "iso": lambda d: f"{d.year}-{d.month:02d}-{d.day:02d}",
 }
 VARIABLES = ["date", "weekday", "month", "day", "year", "time"]
+# Filled from the schedule and the single stream, not from the date: the series' name, a note typed for
+# one date, and which stream of the series it is ("2" and "2nd"; these need the schedule's first date).
+MORE_VARIABLES = ["series", "note", "number", "nth"]
 TITLE_LIMIT = 100          # YouTube's limit; Facebook allows more
 DESCRIPTION_LIMIT = 5000   # YouTube's limit
 
@@ -35,11 +38,27 @@ def format_time(t, clock="12"):
     return f"{t.hour % 12 or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
 
 
-def render(template, when, date_format="long", clock="12"):
-    """Fill {date}, {weekday}, {month}, {day}, {year} and {time}. Anything else in braces stays as typed."""
+def short_day(when, clock="12"):
+    """"Sat, Nov 13 at 9:00 AM"."""
+    return f"{WEEKDAYS[when.weekday()][:3]}, {MONTHS[when.month - 1][:3]} {when.day} at {format_time(when, clock)}"
+
+
+def ordinal(n):
+    """1 -> "1st", 2 -> "2nd", 11 -> "11th"."""
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def render(template, when, date_format="long", clock="12", more=None):
+    """Fill {date}, {weekday}, {month}, {day}, {year} and {time}, and from `more` {series}, {note},
+    {number} and {nth}. Anything else in braces stays as typed, and so do {number} and {nth} when the
+    schedule has no first date to count from."""
     values = {"date": format_date(when, date_format), "weekday": WEEKDAYS[when.weekday()],
               "month": MONTHS[when.month - 1], "day": str(when.day), "year": str(when.year),
               "time": format_time(when, clock)}
+    more = more or {}
+    values.update(series=more.get("series") or "", note=more.get("note") or "")
+    if more.get("number"):
+        values.update(number=str(more["number"]), nth=ordinal(more["number"]))
     return re.sub(r"\{(\w+)\}", lambda m: values.get(m.group(1).lower(), m.group(0)), template or "")
 
 

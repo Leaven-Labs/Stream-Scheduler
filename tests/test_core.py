@@ -71,7 +71,7 @@ class Base(unittest.TestCase):
         self.vault.set("fb", "page_token", "SECRET-PAGE")
         self.net = FakeNet(OK_ROUTES)
         enabled = engine.ENABLED   # the Facebook code is kept and tested, though the app has it switched off
-        engine.ENABLED = {"youtube", "facebook", "wix"}
+        engine.ENABLED = enabled | {"facebook"}
         self.addCleanup(setattr, engine, "ENABLED", enabled)
         real = net.send
         net.send = self.net
@@ -220,7 +220,7 @@ class EngineTest(Base):
         self.net.routes = [("oauth2.googleapis.com/token", 400, {"error": "invalid_grant",
                                                                  "error_description": "Token has been expired"})]
         done = engine.run_due(self.store, self.vault, datetime(2027, 11, 13, 9, 0))
-        self.assertIn("connect it again", done[0]["note"])
+        self.assertIn("Reconnect", done[0]["note"])
         self.assertIn("7 days", done[0]["note"])
         self.assertIn("missing from the keychain", done[1]["note"])
 
@@ -301,9 +301,10 @@ class ChangeTest(Base):
                                                             "description": "New words"}
         done = engine.sync(self.store, self.vault, engine.find(self.store, "s1", "2027-11-14", self.sat), self.sat)
         put = next(c for c in self.net.calls if c["method"] == "PUT")
-        self.assertEqual(json.loads(put["data"]), {"id": "yt123", "snippet": {
+        self.assertEqual(json.loads(put["data"]), {"id": "yt123", "status": {"privacyStatus": "unlisted"}, "snippet": {
             "title": "Moved - November 14, 2027", "description": "New words",
             "scheduledStartTime": recurrence.to_utc(datetime(2027, 11, 14, 8, 30)).strftime("%Y-%m-%dT%H:%M:%SZ")}})
+        self.assertIn("part=snippet%2Cstatus", put["url"])
         self.assertEqual(len([c for c in self.net.calls if c["method"] == "POST" and "liveBroadcasts?" in c["url"]]), 1)
         self.assertEqual((done[0]["status"], done[0]["title"], done[0]["url"], done[0]["when"]),
                          ("created", "Moved - November 14, 2027", "https://www.youtube.com/watch?v=yt123",

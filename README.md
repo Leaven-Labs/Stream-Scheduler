@@ -1,11 +1,12 @@
 <p align="center"><img src="assets/icon.svg" width="96" alt=""></p>
 <h1 align="center">Stream Scheduler</h1>
 <p align="center">Schedules your weekly live streams on <b>YouTube</b> by itself, with the date of each<br>
-stream already in the title, and shows the coming stream on your <b>Wix</b> website.</p>
+stream already in the title, shows the coming stream on your website, and tells you when one needs you.</p>
 
-> **v0.0.4 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
-> site. Changing a stream that already exists on YouTube, and the re-check, are new and not yet
-> confirmed there. Please report what you find.
+> **v0.0.5 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
+> site. New in this version and **not yet confirmed on real accounts**: alerts (email, Discord, Slack,
+> Pushover), thumbnails, playlists and the other YouTube settings, cancelling a stream, WordPress and
+> webhook destinations, and the notice of new versions. Please report what you find.
 
 ![Upcoming streams](docs/upcoming-dark.png)
 
@@ -16,15 +17,27 @@ stream already in the title, and shows the coming stream on your <b>Wix</b> webs
 - **Titles that fill in the date.** `Sunday Service - {date}` becomes *Sunday Service - November 15,
   2027* for that Sunday's stream. Also `{weekday}`, `{month}`, `{day}`, `{year}` and `{time}`, in the
   title and the description, with a choice of date formats.
-- **One-time streams.** A schedule can also be for a single date, such as Christmas Eve.
-- **Change one stream.** Give a single date another title, description or start time, or skip it,
-  without touching the schedule. If the stream already exists, it is changed on YouTube and the website.
+- **One-time streams and series.** A schedule can be for a single date, such as Christmas Eve, or
+  have a first and a last date, such as Wednesdays in Lent. `{series}`, `{number}` and `{nth}` write
+  "Lent, week 2" by themselves.
+- **Change one stream.** Give a single date another title, description, start time or thumbnail, a
+  note (`{note}`), or skip it, without touching the schedule. If the stream already exists, it is
+  changed on YouTube and the website. *Cancel* deletes a stream from YouTube.
+- **Thumbnails and YouTube settings.** A thumbnail per schedule; who can watch, playlist, category,
+  delay and stream key per channel, and who can watch and the playlist per schedule too.
+- **Preview before it is sent.** *Preview what is sent* shows the title, description, time and every
+  setting of the next streams, without sending anything.
+- **Alerts.** Be told by email, Discord, Slack or Pushover when a stream could not be scheduled or a
+  sign-in stopped working, with an optional weekly summary of what is in place.
 - **Check and repair.** *Check now* sees whether every scheduled stream is still on YouTube and still
   shown on the website, and puts back what is missing. *Update now* sends one stream again.
-- **Your website follows along.** After a stream is created on YouTube, the video player on a page
-  of your Wix site is pointed at it.
-- **Guided setup.** A step-by-step guide for YouTube and for Wix explains what to click on Google's
-  and Wix's pages, and what each step means for your account's safety.
+- **Your website follows along.** After a stream is created on YouTube, a page of your Wix or
+  WordPress site is pointed at it, or a web address of your choice is told (a webhook, for Zapier,
+  Make and others).
+- **Guided setup.** A step-by-step guide for every destination and every kind of alert explains what
+  to click on the other side, and what each step means for your account's safety.
+- **Backup and new versions.** Save everything but the sign-ins to one file and restore it, also on
+  another computer. The app says when a newer version is out.
 - **Sign-ins kept in the system keychain**, never in a file. See [SECURITY.md](SECURITY.md).
 - **Runs quietly.** Stays in the tray, can start at login, and catches up on what it missed while the
   computer was off. Light and dark themes.
@@ -72,8 +85,8 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Then: **Destinations** → *Add YouTube* and, if you like, *Add Wix website* (10 to 15 minutes each, once), and
-**Schedules** → *New schedule*.
+Then: **Destinations** → *Add YouTube* and, if you like, *Add a website* (10 to 15 minutes each, once),
+**Schedules** → *New schedule*, and **Alerts** to be told when something needs you.
 
 ## How the automatic part works
 
@@ -96,6 +109,16 @@ stream is still more than 10 minutes away. A stream is never created twice.
   stream that has not started); the app then only changes the link in that
   collection, which is live at once. The schedule must also send to YouTube. Publishing the whole site
   after each update is an option, off by default, because it also publishes any unfinished edits.
+- **WordPress.** The guide has you put a *synced pattern* on your page once and make an application
+  password; the app then replaces what is in that pattern with the new YouTube video. Needs
+  WordPress 5.6 or newer on https. Not yet confirmed on a live site.
+- **Other websites (webhook).** The app sends each new stream's title, time and link as JSON to a web
+  address, where an automation service (Zapier, Make) can update Squarespace or anything else.
+  Squarespace itself offers no way for an app to change a page.
+- **Thumbnails.** YouTube accepts custom thumbnails only from channels verified by phone
+  (youtube.com/verify): JPG or PNG, at most 2 MB.
+- **Alerts** are sent by this app from your computer, so they cannot tell you that the computer is
+  off. The weekly summary is the check for that: no summary means the app is not running.
 - **Facebook is switched off.** Facebook no longer lets an app like this one schedule a live video the
   way its Live Producer does: it refuses the scheduled-live request and the Page's persistent stream
   key. The app could only create an event with a one-off stream key, which does not suit volunteers.
@@ -107,13 +130,13 @@ stream is still more than 10 minutes away. A stream is never created twice.
 |---|---|
 | The program (Windows installer) | `%LOCALAPPDATA%\Programs\Stream Scheduler`, replaced by each update |
 | Settings, schedules, history | Windows `%APPDATA%\Stream Scheduler` · Mac `~/Library/Application Support/Stream Scheduler` · Linux `~/.config/stream-scheduler` |
-| Tokens and client secrets | Windows Credential Manager · macOS Keychain · Linux Secret Service (GNOME Keyring, KWallet) |
+| Tokens, client secrets, webhook addresses, the mail password | Windows Credential Manager · macOS Keychain · Linux Secret Service (GNOME Keyring, KWallet) |
+| A backup | wherever you save it (Settings → Save a backup); it holds no sign-ins |
 
 ## Not in this alpha
 
 Code signing; installers for Mac and Linux; running before anyone has signed in to the computer;
-Facebook; thumbnails; deleting a
-stream on YouTube from the app; other platforms.
+Facebook; a guide for Squarespace (use the webhook); other streaming platforms.
 
 ## For developers
 
@@ -125,7 +148,8 @@ Python and Qt (PySide6), standard library for HTTPS.
 | `tools/build.py`, `tools/installer.iss` | the downloads; the Windows installer (Inno Setup) |
 | `engine.py` | which streams are coming, and creating the ones that are due |
 | `recurrence.py`, `titles.py` | when streams are; filling `{date}` into titles |
-| `youtube.py`, `wix.py`, `net.py` | the platforms' APIs (`facebook.py` is kept but switched off) |
+| `youtube.py`, `wix.py`, `wordpress.py`, `webhook.py`, `net.py` | the platforms' APIs (`facebook.py` is kept but switched off) |
+| `notify.py`, `updates.py` | alerts by email, Discord, Slack and Pushover; the look for a newer version |
 | `vault.py`, `store.py` | secrets in the keychain; everything else in `config.json` |
 | `ui.py`, `mainwindow.py`, `dialogs.py`, `wizards.py` | the look, the pages, the dialogs, the setup guides |
 

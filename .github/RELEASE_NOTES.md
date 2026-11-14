@@ -1,27 +1,34 @@
-The fifth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
-of each stream in the title, and shows the coming stream on your Wix website.
+The sixth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
+of each stream in the title, shows the coming stream on your website, and tells you when one needs you.
 
 > **Alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and site.
-> Changing a stream that already exists on YouTube, and the re-check, are new and not yet confirmed
-> there.
+> Everything under "New in 0.0.5" that talks to another service passed its automated tests but is
+> **not yet confirmed on real accounts**. Try each one once before relying on it.
 
-## New in 0.0.4
+## New in 0.0.5
 
-- **A Windows installer.** `Stream-Scheduler-Windows-Setup.exe` replaces the zip. It installs for you
-  alone, without an administrator prompt, and can start the app each time you sign in to Windows.
-  Later versions update by running the newer Setup.
-- **Checks when it starts.** Each time the app starts, also hidden at sign-in, it sees whether every
-  scheduled stream is still on YouTube and on the website, creates again what is gone, and creates
-  what came due while the computer was off.
-- **Start when I log in** in Settings shows what the system really does.
-
-Coming from an unzipped Windows version: run the Setup. It stops the old copy and keeps your
-destinations, schedules and sign-ins; afterwards, delete the old unzipped folder yourself. The installer
-is new: it passed its automated install, update and uninstall test, and has not yet been used on a
-computer with earlier settings, so copy `%APPDATA%\Stream Scheduler` somewhere first.
+- **Alerts.** A new page sets up email, Discord, Slack and Pushover, each with a step-by-step guide
+  and a test message. You are told when a stream could not be scheduled (or its start came without
+  it), when a sign-in stopped working (asked once a day), and, if you like, in a weekly summary and
+  for every new stream with its link.
+- **Series with a first and a last date,** such as Wednesdays in Lent. `{series}`, `{number}`,
+  `{nth}` and `{note}` join the names you can use in titles and descriptions.
+- **Thumbnails:** one per schedule, and another for a single stream when you want.
+- **More YouTube settings:** playlist, category and delay for a channel; who can watch and the
+  playlist for a schedule.
+- **Cancel** deletes a scheduled stream from YouTube and skips its date. Deleting a schedule offers
+  to delete its coming streams too.
+- **Preview what is sent,** in the schedule window: the next streams with every setting, and what
+  YouTube would refuse. Nothing is sent.
+- **More websites:** a guide for WordPress, and a web address (webhook) for Zapier, Make and others.
+- **Reconnect** gives a destination a new sign-in without losing its schedules.
+- **Backup and restore** in Settings: everything but the sign-ins, in one file.
+- **A notice when a newer version is out.** Once a day the app asks GitHub for this project's
+  releases; it can be switched off in Settings.
 
 Updating: download and run the new version (on Windows, the new Setup). Your destinations, schedules and
-sign-ins are kept.
+sign-ins are kept. To be safe, copy the settings folder first (`%APPDATA%\Stream Scheduler` on Windows);
+from this version on, **Settings → Save a backup** does that for you.
 
 ## Download
 
@@ -45,10 +52,14 @@ must be running to save sign-ins.
 
 ## What it does
 
-- Weekly and one-time schedules, created on YouTube a chosen number of days before
-- Titles and descriptions with `{date}`, `{weekday}`, `{month}`, `{day}`, `{year}`, `{time}`
-- Change or skip a single stream; check and repair what was scheduled
-- YouTube and Wix, each with a step-by-step setup guide
+- Weekly schedules, series with an end date and one-time streams, created on YouTube a chosen number
+  of days before
+- Titles and descriptions with `{date}`, `{weekday}`, `{month}`, `{day}`, `{year}`, `{time}`, `{series}`,
+  `{number}`, `{nth}`, `{note}`
+- Thumbnails, playlists, category, delay and who can watch
+- Change, skip or cancel a single stream; check and repair what was scheduled; preview before sending
+- Alerts by email, Discord, Slack and Pushover
+- YouTube, Wix, WordPress and webhooks, each with a step-by-step setup guide
 - A persistent YouTube stream key: your encoder keeps the same key every week
 - Sign-ins kept in the system keychain
-- Tray, start at login, catch-up after the computer was off
+- Tray, start at login, catch-up after the computer was off, backup and restore, a notice of new versions
