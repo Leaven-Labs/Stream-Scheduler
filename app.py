@@ -72,6 +72,10 @@ def uitest():
             for dialog in made:
                 dialog.grab()
             app.processEvents()
+    import importlib
+    backend = {"win32": "Windows", "darwin": "macOS"}.get(sys.platform, "SecretService")
+    importlib.import_module("keyring.backends." + backend)   # a built program must carry its keychain
+    import truststore  # noqa: F401
     print("uitest ok")
     return 0
 

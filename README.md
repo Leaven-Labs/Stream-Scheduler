@@ -28,9 +28,26 @@ with the date of each stream already in the title.</p>
 |---|---|
 | ![A schedule](docs/schedule-light.png) | ![The YouTube guide](docs/wizard-youtube-dark.png) |
 
-## Run it
+## Install
 
-There is no installer yet. You need [Python](https://www.python.org/downloads/) 3.10 or newer.
+Download from the **[Releases](../../releases)** page:
+
+| Your computer | Download |
+|---|---|
+| Windows 10 or 11 (64-bit) | `Stream-Scheduler-Windows.zip` |
+| Mac with Apple silicon (M1 or newer) | `Stream-Scheduler-macOS.zip` |
+| Linux, 64-bit (Ubuntu 22.04 or newer) | `Stream-Scheduler-Linux-x86_64.tar.gz` |
+
+**Windows.** Unzip and run **Stream Scheduler.exe** in the folder. It isn't code-signed yet, so if
+Windows says *"Windows protected your PC"*, click **More info** → **Run anyway**.
+
+**Mac.** Unzip and drag **Stream Scheduler** to **Applications**. It isn't signed with an Apple
+developer ID yet: the first time, click **Done**, open **System Settings → Privacy & Security**, and
+click **Open Anyway** next to Stream Scheduler.
+
+**Linux.** Unpack and run `Stream Scheduler/Stream Scheduler`.
+
+Or run it from source with [Python](https://www.python.org/downloads/) 3.10 or newer:
 
 ```bash
 git clone https://github.com/Leaven-Labs/Stream-Scheduler.git
@@ -57,7 +74,7 @@ The streams are created **by your computer**, at the time the schedule says, thr
 official APIs. There is no server of ours. So the app has to run at that time:
 
 - leave it open, or closed to the tray (the default), and switch on **Settings → Start when I log in**; or
-- have your system's task scheduler run `python app.py --run`, which creates what is due and exits.
+- have your system's task scheduler run the program with `--run` (from source: `python app.py --run`), which creates what is due and exits.
 
 If the computer was off, the app creates the missed streams the next time it runs, as long as the
 stream is still more than 10 minutes away. A stream is never created twice.
@@ -83,7 +100,7 @@ stream is still more than 10 minutes away. A stream is never created twice.
 
 ## Not in this alpha
 
-Installers; thumbnails; one-off (non-weekly) streams; changing or deleting a stream on the platform
+Installers and code signing (the downloads are plain zip files); thumbnails; one-off (non-weekly) streams; changing or deleting a stream on the platform
 after it was created; other platforms.
 
 ## For developers
@@ -109,6 +126,17 @@ python app.py --uitest
 
 ```bash
 python tools/screenshots.py
+```
+
+To build the program for your own system (the Release workflow does this for all three and publishes
+them):
+
+```bash
+pip install -r requirements-build.txt
+```
+
+```bash
+python tools/build.py
 ```
 
 ## License

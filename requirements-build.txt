@@ -1,0 +1,3 @@
+# What the release build needs on top of requirements.txt: PyInstaller makes the program.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
