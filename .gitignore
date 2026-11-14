@@ -1,0 +1,22 @@
+# Python build files
+__pycache__/
+*.pyc
+.venv/
+.venv*
+
+# Secrets (never commit keys, tokens or passwords; the app keeps them in the system keychain)
+.env
+.env.*
+client_secret*.json
+token*.json
+*.secret
+
+# The app's own data, if someone points STREAM_SCHEDULER_DATA_DIR at the repository
+config.json
+config.json.tmp
+app.lock
+cache/
+
+# Build output
+build/
+dist/

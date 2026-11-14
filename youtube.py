@@ -1,0 +1,159 @@
+"""YouTube: sign in with Google (OAuth 2.0 for desktop apps, with PKCE) and schedule live broadcasts.
+
+The user makes their own OAuth client in Google Cloud (the wizard explains how), so the app talks
+to Google directly with the user's own quota and nothing passes through anyone else's server.
+Kept in the keychain: the client secret and the refresh token. The short-lived access token is
+only held in memory.
+"""
+import base64
+import hashlib
+import http.server
+import secrets
+import time
+import urllib.parse
+
+import net
+
+AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+API = "https://www.googleapis.com/youtube/v3"
+SCOPE = "https://www.googleapis.com/auth/youtube"   # the narrowest scope that can create broadcasts
+PRIVACY = ["public", "unlisted", "private"]
+
+_DONE_PAGE = """<!doctype html><meta charset="utf-8"><title>Stream Scheduler</title>
+<body style="font-family:system-ui,sans-serif;background:#0f1117;color:#eceef5;text-align:center;padding-top:18vh">
+<h2>%s</h2><p style="color:#9299ad">You can close this tab and go back to Stream Scheduler.</p></body>"""
+
+
+class SignIn:
+    """One sign-in in the browser. start() gives the address to open; wait() returns the tokens.
+
+    Google sends the browser back to a web server this class runs on 127.0.0.1 for the length of the
+    sign-in (only this computer can reach it). `state` proves the answer belongs to our question, and
+    the PKCE verifier proves to Google that the one who asks for the tokens started the sign-in."""
+
+    def __init__(self, client_id, client_secret):
+        self.client_id, self.client_secret = client_id.strip(), client_secret.strip()
+        self.state = secrets.token_urlsafe(24)
+        self.verifier = secrets.token_urlsafe(64)
+        self.answer = None
+        self.cancelled = False
+        self.server = None
+
+    def start(self):
+        signin = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                if "state" not in query:  # a favicon request, or a stranger
+                    self.send_error(404)
+                    return
+                good = secrets.compare_digest(query["state"][0], signin.state)
+                signin.answer = {k: v[0] for k, v in query.items()} if good else {"error": "state"}
+                page = _DONE_PAGE % ("Signed in" if good and "code" in query else "Sign-in did not finish")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(page.encode())
+
+            def log_message(self, *args):  # nothing on the console: the address holds the code
+                pass
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        self.server.timeout = 0.5
+        self.redirect = f"http://127.0.0.1:{self.server.server_address[1]}"
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(self.verifier.encode()).digest()).rstrip(b"=").decode()
+        return AUTH_URL + "?" + urllib.parse.urlencode({
+            "client_id": self.client_id, "redirect_uri": self.redirect, "response_type": "code",
+            "scope": SCOPE, "state": self.state, "code_challenge": challenge, "code_challenge_method": "S256",
+            "access_type": "offline", "prompt": "consent"})  # offline + consent: Google gives a refresh token
+
+    def cancel(self):
+        self.cancelled = True
+
+    def wait(self, timeout=300):
+        """Block until the browser comes back. Returns {"refresh_token", "access_token"}."""
+        deadline = time.monotonic() + timeout
+        try:
+            while self.answer is None:
+                if self.cancelled:
+                    raise net.ApiError("The sign-in was cancelled.")
+                if time.monotonic() > deadline:
+                    raise net.ApiError("No answer from the browser after 5 minutes. Please try again.")
+                self.server.handle_request()
+        finally:
+            self.server.server_close()
+        if "code" not in self.answer:
+            why = self.answer.get("error", "")
+            raise net.ApiError("Access was not allowed in the browser." if why == "access_denied"
+                               else f"The sign-in did not finish ({why}).")
+        tokens = net.request("POST", TOKEN_URL, form={
+            "client_id": self.client_id, "client_secret": self.client_secret, "code": self.answer["code"],
+            "code_verifier": self.verifier, "grant_type": "authorization_code", "redirect_uri": self.redirect})
+        if not tokens.get("refresh_token"):
+            raise net.ApiError("Google did not give a long-term sign-in. Please try again.")
+        return tokens
+
+
+def access_token(client_id, client_secret, refresh_token):
+    """A fresh access token (good for about an hour) from the saved refresh token."""
+    try:
+        answer = net.request("POST", TOKEN_URL, form={
+            "client_id": client_id, "client_secret": client_secret, "refresh_token": refresh_token,
+            "grant_type": "refresh_token"})
+    except net.ApiError as exc:
+        if exc.reason == "invalid_grant":
+            raise net.ApiError(
+                "Google no longer accepts the saved sign-in. It was revoked, or the Google Cloud app is still in "
+                "'Testing' (those sign-ins end after 7 days). Remove the destination and connect it again.",
+                exc.status, exc.reason) from None
+        raise
+    return answer["access_token"]
+
+
+def channel(token):
+    """The signed-in channel: {"id", "title"}."""
+    items = net.request("GET", f"{API}/channels", {"part": "snippet", "mine": "true"}, token=token).get("items")
+    if not items:
+        raise net.ApiError("This Google account has no YouTube channel. Create one on youtube.com first.")
+    return {"id": items[0]["id"], "title": items[0]["snippet"]["title"]}
+
+
+def streams(token):
+    """The channel's reusable stream keys: [{"id", "title"}]. A broadcast bound to one of them goes
+    live when the encoder sends to that key, so the key in OBS (or the encoder) never changes."""
+    answer = net.request("GET", f"{API}/liveStreams",
+                         {"part": "snippet,contentDetails", "mine": "true", "maxResults": 50}, token=token)
+    return [{"id": s["id"], "title": s["snippet"]["title"]} for s in answer.get("items", [])
+            if s.get("contentDetails", {}).get("isReusable", True)]
+
+
+def create_broadcast(token, title, description, start_utc, options):
+    """Schedule a broadcast. Returns {"id", "url", "note"}; note says what could not be done."""
+    body = {
+        "snippet": {"title": title, "description": description,
+                    "scheduledStartTime": start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")},
+        "status": {"privacyStatus": options.get("privacy", "public"),
+                   "selfDeclaredMadeForKids": bool(options.get("made_for_kids", False))},
+        "contentDetails": {"enableAutoStart": bool(options.get("auto_start", True)),
+                           "enableAutoStop": bool(options.get("auto_stop", True))},
+    }
+    try:
+        made = net.request("POST", f"{API}/liveBroadcasts", {"part": "snippet,status,contentDetails"},
+                           body=body, token=token)
+    except net.ApiError as exc:
+        if exc.reason in ("liveStreamingNotEnabled", "insufficientLivePermissions"):
+            raise net.ApiError("Live streaming is not switched on for this YouTube channel. Enable it at "
+                               "youtube.com/features (the first time takes up to 24 hours).",
+                               exc.status, exc.reason) from None
+        raise
+    note = ""
+    if options.get("stream_id"):
+        try:
+            net.request("POST", f"{API}/liveBroadcasts/bind",
+                        {"id": made["id"], "part": "id,contentDetails", "streamId": options["stream_id"]},
+                        token=token)
+        except net.ApiError as exc:
+            note = f"Created, but the stream key could not be attached ({exc}). Choose it in YouTube Studio."
+    return {"id": made["id"], "url": f"https://www.youtube.com/watch?v={made['id']}", "note": note}
