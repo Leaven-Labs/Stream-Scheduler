@@ -1,18 +1,22 @@
-"""The smaller windows: a schedule, the words of one single stream, and a YouTube channel's options."""
-from datetime import datetime
+"""The smaller windows: a schedule, the words of one single stream, a preview of what would be sent,
+and a YouTube channel's options."""
+import os
+from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, Qt, QTime
-from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QGridLayout, QHBoxLayout, QLineEdit, QPlainTextEdit, QSpinBox,
-                               QTimeEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLineEdit,
+                               QPlainTextEdit, QScrollArea, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
 import engine
 import recurrence
 import titles
 import ui
+import youtube
 from store import new_id
 from wizards import YouTubeOptions
 
-KIND_NAMES = {"youtube": "YouTube", "facebook": "Facebook", "wix": "Website"}
+KIND_NAMES = {"youtube": "YouTube", "facebook": "Facebook", "wix": "Website", "wordpress": "WordPress",
+              "webhook": "Webhook"}
 
 
 def time_edit(text, clock):
@@ -32,15 +36,82 @@ def pad(spin):
 
 def variable_row(target):
     """Buttons that put {date} and the others where the cursor is in `target`."""
-    row = QHBoxLayout()
-    row.setSpacing(6)
-    row.addWidget(ui.label("Insert:", "small"))
-    for name in titles.VARIABLES:
-        row.addWidget(ui.button("{" + name + "}", "var", lambda _=False, n=name: (
-            target.insert("{" + n + "}") if isinstance(target, QLineEdit) else target.insertPlainText("{" + n + "}"),
-            target.setFocus())))
-    row.addStretch(1)
-    return row
+    tips = {"series": "The series' name, from the schedule", "note": "A note typed for one single stream (Edit, "
+            "on the Upcoming page)", "number": "Which stream of the series it is: 2. Needs a first date.",
+            "nth": "The same as a word: 2nd. Needs a first date."}
+    both = QVBoxLayout()
+    both.setSpacing(5)
+    for lead, names in (("Insert:", titles.VARIABLES), ("Series:", titles.MORE_VARIABLES)):
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        head = ui.label(lead, "small")
+        head.setFixedWidth(44)
+        row.addWidget(head)
+        for name in names:
+            row.addWidget(ui.button("{" + name + "}", "var", lambda _=False, n=name: (
+                target.insert("{" + n + "}") if isinstance(target, QLineEdit) else target.insertPlainText("{" + n + "}"),
+                target.setFocus()), tips.get(name, "")))
+        row.addStretch(1)
+        both.addLayout(row)
+    return both
+
+
+class OptionalDate(QWidget):
+    """A switch, a few words and a date: the date counts only while the switch is on."""
+
+    def __init__(self, text, value, default):
+        super().__init__()
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        self.switch = ui.Switch(bool(value))
+        self.date = QDateEdit(QDate.fromString(value, "yyyy-MM-dd") if value else default)
+        self.date.setCalendarPopup(True)
+        self.date.setDisplayFormat("ddd, MMM d, yyyy")
+        self.date.setMinimumWidth(170)
+        self.date.setEnabled(bool(value))
+        pad(self.date)
+        self.switch.toggled.connect(self.date.setEnabled)
+        row.addWidget(self.switch)
+        row.addWidget(ui.label(text))
+        row.addWidget(self.date)
+        row.addStretch(1)
+
+    def value(self):
+        return self.date.date().toString("yyyy-MM-dd") if self.switch.isChecked() else ""
+
+
+class ThumbnailPicker(QWidget):
+    """Choose a picture file for the thumbnail, or none. `path` is the choice ("" for none)."""
+
+    def __init__(self, path, none_text="None: YouTube's own picture"):
+        super().__init__()
+        self.path, self.none_text = path or "", none_text
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        self.name = ui.label("", "sub")
+        self.clear_button = ui.button("Remove", "mini", lambda: self.set(""))
+        row.addWidget(ui.button("Choose a picture ...", "mini", self.choose,
+                                "JPG or PNG, at most 2 MB. YouTube suggests 1280 × 720."))
+        row.addWidget(self.clear_button)
+        row.addWidget(self.name, 1)
+        self.set(self.path)
+
+    def set(self, path):
+        self.path = path
+        problem = youtube.thumbnail_problem(path) if path else ""
+        self.name.setObjectName("error" if problem else "sub")
+        ui.set_prop(self.name, "x", 1)
+        self.name.setText(problem or os.path.basename(path) or self.none_text)
+        self.name.setToolTip(path)
+        self.clear_button.setVisible(bool(path))
+
+    def choose(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Thumbnail", os.path.dirname(self.path),
+                                              "Pictures (*.jpg *.jpeg *.png)")
+        if path:
+            self.set(path)
 
 
 def bottom_bar(dialog, ok_text, on_ok):
@@ -65,16 +136,23 @@ class ScheduleDialog(QDialog):
             "destinations": [d["id"] for d in store.destinations if d["kind"] in engine.ENABLED], "overrides": {}}
         s = self.schedule
         self.setWindowTitle("Edit schedule" if schedule else "New schedule")
-        self.resize(720, 700)
+        self.resize(780, 760)
         col = QVBoxLayout(self)
-        col.setContentsMargins(26, 22, 26, 18)
+        col.setContentsMargins(26, 22, 18, 18)
         col.setSpacing(10)
         col.addWidget(ui.label(self.windowTitle(), "pagetitle"))
-        grid = QGridLayout()
+        body = QWidget()
+        body.setObjectName("scrollbody")
+        grid = QGridLayout(body)
+        grid.setContentsMargins(0, 0, 12, 0)
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(10)
         grid.setColumnStretch(1, 1)
-        col.addLayout(grid)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(body)
+        col.addWidget(scroll, 1)
 
         self.name = QLineEdit(s["name"])
         self.name.setPlaceholderText("For your own lists, e.g. Sunday Service")
@@ -103,10 +181,19 @@ class ScheduleDialog(QDialog):
         when_box.addWidget(self.repeat, 0, Qt.AlignLeft)
         when_box.addWidget(days_box)
         when_box.addWidget(self.date, 0, Qt.AlignLeft)
+        self.starts = OptionalDate("First stream on or after", s.get("starts", ""), QDate.currentDate())
+        self.until = OptionalDate("Last stream on or before", s.get("until", ""), QDate.currentDate().addDays(42))
+        for w in (self.starts, self.until):
+            w.setToolTip("For a series with a beginning and an end, such as Lent. Off: no limit.")
+            when_box.addWidget(w)
+            w.switch.toggled.connect(lambda *_: self.update_preview())
+            w.date.dateChanged.connect(lambda *_: self.update_preview())
 
         def show_kind(*_):
             once = self.repeat.buttons["once"].isChecked()
             days_box.setVisible(not once)
+            self.starts.setVisible(not once)
+            self.until.setVisible(not once)
             self.date.setVisible(once)
             self.update_preview()
         self.repeat.changed.connect(show_kind)
@@ -125,6 +212,20 @@ class ScheduleDialog(QDialog):
             made.addWidget(w)
         made.addStretch(1)
         self.title = QLineEdit(s["title"])
+        self.series = QLineEdit(s.get("series", ""))
+        self.series.setPlaceholderText("Optional, e.g. Lent 2027. Written where the title or description says {series}.")
+        self.thumbnail = ThumbnailPicker(s.get("thumbnail", ""))
+        self.privacy = QComboBox()
+        for key, text in (("", "As the channel is set"), ("public", "Public: everyone"),
+                          ("unlisted", "Unlisted: only with the link"), ("private", "Private: only you")):
+            self.privacy.addItem(text, key)
+        self.privacy.setCurrentIndex(max(0, self.privacy.findData(s.get("privacy", ""))))
+        self.playlist = QLineEdit(s.get("playlist", ""))
+        self.playlist.setPlaceholderText("Optional: paste a playlist's link. Empty: as the channel is set.")
+        tube = QVBoxLayout()
+        tube.setSpacing(6)
+        tube.addWidget(self.privacy, 0, Qt.AlignLeft)
+        tube.addWidget(self.playlist)
         self.date_format = QComboBox()
         sample = datetime(2027, 11, 15)
         for key in titles.DATE_FORMATS:
@@ -156,7 +257,8 @@ class ScheduleDialog(QDialog):
         title_box.addLayout(variable_row(self.title))
         rows = [("Name", self.name), ("Repeats", when_box), ("Stream time", self.time),
                 ("Create it", made), ("Title", title_box), ("Date written as", self.date_format),
-                ("Description", self.description), ("Send to", dest_row)]
+                ("Series", self.series), ("Description", self.description), ("Thumbnail", self.thumbnail),
+                ("On YouTube", tube), ("Send to", dest_row)]
         for i, (text, thing) in enumerate(rows):
             grid.addWidget(ui.label(text, "strong"), i, 0, Qt.AlignTop)
             if isinstance(thing, QWidget):
@@ -174,13 +276,16 @@ class ScheduleDialog(QDialog):
         box.addWidget(self.preview_title)
         box.addWidget(self.preview_when)
         col.addWidget(preview)
-        col.addStretch(1)
-        col.addLayout(bottom_bar(self, "Save", self.save))
+        bar = bottom_bar(self, "Save", self.save)
+        bar.insertWidget(0, ui.button("Preview what is sent", clicked=self.show_preview,
+                                      tip="Everything the platforms would be told for the next streams. "
+                                          "Nothing is sent."))
+        col.addLayout(bar)
 
         for b in self.days:
             b.toggled.connect(self.update_preview)
         for signal in (self.title.textChanged, self.time.timeChanged, self.create_time.timeChanged,
-                       self.lead.valueChanged, self.date_format.currentIndexChanged):
+                       self.lead.valueChanged, self.date_format.currentIndexChanged, self.series.textChanged):
             signal.connect(self.update_preview)
         self.show_kind()
 
@@ -190,24 +295,32 @@ class ScheduleDialog(QDialog):
                  time=self.time.time().toString("HH:mm"), lead_days=self.lead.value(),
                  create_time=self.create_time.time().toString("HH:mm"), title=self.title.text().strip(),
                  date_format=self.date_format.currentData(), description=self.description.toPlainText().strip(),
-                 destinations=[i for i, b in self.dests.items() if b.isChecked()])
+                 destinations=[i for i, b in self.dests.items() if b.isChecked()],
+                 series=self.series.text().strip(), thumbnail=self.thumbnail.path,
+                 privacy=self.privacy.currentData(), playlist=self.playlist.text().strip(),
+                 starts=self.starts.value(), until=self.until.value())
         s.pop("once", None)
         if self.repeat.buttons["once"].isChecked():
             s["once"] = self.date.date().toString("yyyy-MM-dd")
+            s.update(starts="", until="")
         return s
+
+    def show_preview(self):
+        PreviewDialog(self, self.store, self.value()).exec()
 
     def update_preview(self, *_):
         s = self.value()
         now = datetime.now()
-        coming = recurrence.occurrences(s, now, now.replace(year=now.year + 1)) if s["weekdays"] or s.get("once") else []
+        coming = recurrence.occurrences(s, now, now + timedelta(days=366)) if s["weekdays"] or s.get("once") else []
         if not coming:
             self.preview_title.setText("That date and time have passed" if s.get("once")
-                                       else "Choose at least one stream day")
+                                       else "No stream is left between the first and the last date"
+                                       if s["weekdays"] else "Choose at least one stream day")
             self.preview_when.setText("")
             return
         when = coming[0]
         made = recurrence.create_at(s, when)
-        self.preview_title.setText(titles.render(s["title"], when, s["date_format"], self.clock) or "(no title)")
+        self.preview_title.setText(engine.text_for(self.store, s, when)[0] or "(no title)")
         self.preview_when.setText(
             f"Goes live {titles.format_date(when, 'weekday')} at {titles.format_time(when, self.clock)}  ·  "
             f"created on {titles.format_date(made, 'weekday')} at {titles.format_time(made, self.clock)}")
@@ -223,6 +336,12 @@ class ScheduleDialog(QDialog):
             found.insert(0, "Choose at least one stream day.")
         if s.get("once") and not recurrence.occurrences(s, now, now):
             found.insert(0, "That date and time have passed. Choose a later one.")
+        if s.get("starts") and s.get("until") and s["until"] < s["starts"]:
+            found.insert(0, "The last date is before the first date.")
+        if s.get("playlist") and not youtube.playlist_id(s["playlist"]):
+            found.append("The playlist is not understood. Paste the playlist's link from YouTube, or leave it empty.")
+        if s.get("thumbnail") and youtube.thumbnail_problem(s["thumbnail"]):
+            found.append(youtube.thumbnail_problem(s["thumbnail"]))
         if found:
             self.error.setText(found[0])
             return
@@ -241,7 +360,7 @@ class OverrideDialog(QDialog):
         over = schedule.get("overrides", {}).get(item["date"], {})
         self.result = dict(over)
         self.setWindowTitle("Edit this stream")
-        self.resize(620, 500)
+        self.resize(660, 640)
         self.clock = store.settings.get("clock", "12")
         self.exists = any(e and e["status"] == "created" for _, e in item["targets"])
         col = QVBoxLayout(self)
@@ -267,8 +386,15 @@ class OverrideDialog(QDialog):
         col.addLayout(variable_row(self.title))
         col.addWidget(ui.label("Description", "strong"))
         col.addWidget(self.description, 1)
+        self.note = QLineEdit(over.get("note", ""))
+        self.note.setPlaceholderText("Optional, e.g. with baptism. Written where the title or description says {note}.")
+        col.addWidget(ui.label("Note for this date", "strong"))
+        col.addWidget(self.note)
+        self.thumbnail = ThumbnailPicker(over.get("thumbnail", ""), "The schedule's own")
+        col.addWidget(ui.label("Thumbnail for this stream", "strong"))
+        col.addWidget(self.thumbnail)
         bar = bottom_bar(self, "Save for this stream", self.save)
-        if over.get("title") or "description" in over or over.get("time"):
+        if any(over.get(k) for k in ("title", "time", "note", "thumbnail")) or "description" in over:
             bar.insertWidget(0, ui.button("Use the schedule's own again", clicked=self.reset))
         col.addLayout(bar)
 
@@ -279,6 +405,8 @@ class OverrideDialog(QDialog):
     def save(self):
         title, description = self.title.text().strip(), self.description.toPlainText().strip()
         found = titles.problems(titles.render(title, self.item["when"]), description)
+        if self.thumbnail.path and youtube.thumbnail_problem(self.thumbnail.path):
+            found.append(youtube.thumbnail_problem(self.thumbnail.path))
         if found:
             self.error.setText(found[0])
             return
@@ -293,14 +421,82 @@ class OverrideDialog(QDialog):
             self.result.update(title=title, description=description)
         if at != schedule["time"]:
             self.result["time"] = at
+        if self.note.text().strip():
+            self.result["note"] = self.note.text().strip()
+        if self.thumbnail.path:
+            self.result["thumbnail"] = self.thumbnail.path
         self.accept()
+
+
+class PreviewDialog(QDialog):
+    """What a schedule would send for its next streams. Nothing is sent."""
+
+    def __init__(self, parent, store, schedule):
+        super().__init__(parent)
+        self.setWindowTitle("Preview")
+        self.resize(700, 680)
+        clock = store.settings.get("clock", "12")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(26, 22, 18, 18)
+        outer.setSpacing(10)
+        outer.addWidget(ui.label("What would be sent", "pagetitle"))
+        outer.addWidget(ui.label("Nothing is sent now. These are the next streams of this schedule as the "
+                                 "platforms would be told, with what you have filled in so far.", "sub", wrap=True))
+        body = QWidget()
+        body.setObjectName("scrollbody")
+        col = QVBoxLayout(body)
+        col.setContentsMargins(0, 0, 12, 0)
+        col.setSpacing(12)
+        streams = engine.preview(store, schedule, 3) if schedule.get("weekdays") or schedule.get("once") else []
+        if not streams:
+            col.addWidget(ui.label("This schedule has no coming stream: choose its days and dates first.", "sub",
+                                   wrap=True))
+        for stream in streams:
+            card = ui.card()
+            box = QVBoxLayout(card)
+            box.setContentsMargins(16, 12, 16, 14)
+            box.setSpacing(5)
+            box.addWidget(ui.label(titles.format_date(stream["when"], "weekday").upper() + "  ·  "
+                                   + titles.format_time(stream["when"], clock), "caps"))
+            box.addWidget(ui.label(stream["title"] or "(no title)", "big", wrap=True))
+            box.addWidget(ui.label(f"{len(stream['title'])} of {titles.TITLE_LIMIT} characters  ·  created "
+                                   f"{titles.short_day(stream['create_at'], clock)}", "small"))
+            for problem in stream["problems"]:
+                box.addWidget(ui.label("✗  " + problem, "error", wrap=True))
+            words = ui.label(stream["description"] or "(no description)", "sub", wrap=True)
+            words.setTextFormat(Qt.PlainText)
+            box.addWidget(words)
+            if not stream["destinations"]:
+                box.addWidget(ui.label("No destination is chosen: nothing would be created.", "error", wrap=True))
+            for dest in stream["destinations"]:
+                box.addSpacing(4)
+                box.addWidget(ui.rule())
+                box.addWidget(ui.label(f"{KIND_NAMES[dest['kind']]} · {dest['name']}", "strong"))
+                lines = QGridLayout()
+                lines.setHorizontalSpacing(14)
+                lines.setVerticalSpacing(3)
+                lines.setColumnStretch(1, 1)
+                for i, (name, value) in enumerate(dest["lines"]):
+                    lines.addWidget(ui.label(name, "small"), i, 0, Qt.AlignTop)
+                    lines.addWidget(ui.label(str(value), wrap=True), i, 1)
+                box.addLayout(lines)
+            col.addWidget(card)
+        col.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        outer.addWidget(scroll, 1)
+        bar = QHBoxLayout()
+        bar.addStretch(1)
+        bar.addWidget(ui.button("Close", "primary", self.accept))
+        outer.addLayout(bar)
 
 
 class YouTubeOptionsDialog(QDialog):
     def __init__(self, parent, dest):
         super().__init__(parent)
         self.setWindowTitle("YouTube options")
-        self.resize(560, 360)
+        self.resize(600, 600)
         col = QVBoxLayout(self)
         col.setContentsMargins(26, 22, 26, 18)
         col.setSpacing(12)
@@ -309,4 +505,11 @@ class YouTubeOptionsDialog(QDialog):
         self.options = YouTubeOptions(dest.get("options", {}))
         col.addWidget(self.options)
         col.addStretch(1)
-        col.addLayout(bottom_bar(self, "Save", self.accept))
+        col.addLayout(bottom_bar(self, "Save", self.save))
+
+    def save(self):
+        problem = self.options.problem()
+        if problem:
+            self.error.setText(problem)
+        else:
+            self.accept()

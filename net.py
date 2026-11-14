@@ -2,6 +2,7 @@
 
 Errors never carry the address that was asked for, because a token can be part of it.
 """
+import base64
 import json
 import ssl
 import urllib.error
@@ -56,15 +57,24 @@ def _error(status, payload):
         reason = errors[0].get("reason") or str(err.get("status") or err.get("code") or "")
     elif isinstance(err, str):  # OAuth token answers
         reason, message = err, payload.get("error_description") or err
-    elif isinstance(payload, dict) and isinstance(payload.get("message"), str):  # Wix
+    elif isinstance(payload, dict) and isinstance(payload.get("message"), str):  # Wix, WordPress, Discord
         message = payload["message"]
-        reason = str((payload.get("details") or {}).get("applicationError", {}).get("code", ""))
+        details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+        reason = str(details.get("applicationError", {}).get("code", "") or payload.get("code") or "")
+    elif isinstance(payload, dict) and isinstance(payload.get("errors"), list):  # Pushover
+        message = " ".join(str(e) for e in payload["errors"])
     return ApiError(message or f"The server answered with error {status}.", status, reason)
 
 
-def request(method, url, params=None, form=None, body=None, token=None, timeout=30, headers=None):
+def basic(user, password):
+    """The Authorization header of a user name with a password (WordPress application passwords)."""
+    return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+
+
+def request(method, url, params=None, form=None, body=None, token=None, timeout=30, headers=None, raw=None):
     """Ask and return the JSON answer. `token` goes in the Authorization header (as a Bearer token),
-    `form` and `body` (JSON) in the request, never in the address. `headers` adds or replaces headers."""
+    `form` and `body` (JSON) in the request, never in the address. `headers` adds or replaces headers.
+    `raw` is (bytes, content type) for a file, such as a thumbnail."""
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     headers = {"Accept": "application/json", "User-Agent": f"StreamScheduler/{paths.VERSION}", **(headers or {})}
@@ -77,6 +87,8 @@ def request(method, url, params=None, form=None, body=None, token=None, timeout=
     elif form is not None:
         data = urllib.parse.urlencode(form).encode()
         headers["Content-Type"] = "application/x-www-form-urlencoded"
+    elif raw is not None:
+        data, headers["Content-Type"] = raw
     status, raw = send(method, url, headers, data, timeout)
     try:
         payload = json.loads(raw) if raw else {}

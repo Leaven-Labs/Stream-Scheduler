@@ -19,7 +19,7 @@
 <main>
   <p><a href="./">← Stream Scheduler</a></p>
   <h1>Privacy policy</h1>
-  <p class="sub">Stream Scheduler, a desktop program by Leaven Labs. Last updated November 15, 2026.</p>
+  <p class="sub">Stream Scheduler, a desktop program by Leaven Labs. Last updated November 15, 2026 (version 0.0.5).</p>
 
   <h2>In short</h2>
   <p>Stream Scheduler runs on your computer and has no server. Leaven Labs does not receive, collect, store,
@@ -37,15 +37,30 @@
     of that site and to write the stream's link and title into one item of it, so that your page shows the
     coming stream.</p>
 
+  <p><b>WordPress and other websites.</b> When you connect a WordPress website, the app uses an application
+    password you create to read the site's list of synced patterns and to write the coming stream into one
+    of them. When you connect a web address (a webhook), the app sends each new stream's title, description,
+    start time and YouTube link to that address.</p>
+
+  <p><b>Alerts.</b> If you set up a way to be told (email, Discord, Slack or Pushover), the app sends
+    messages there about your streams: their title, time and link, and the reason when something failed.
+    They go from your computer straight to the service you chose.</p>
+
+  <p><b>New versions.</b> Once a day the app asks GitHub for this project's public list of releases. The
+    request carries only the app's name and version. You can switch this off in Settings.</p>
+
   <h2>Where data is kept</h2>
   <p>Everything stays on your computer. Your schedules, the names and ids of your channel and Page, and the
-    history of created streams are in a settings file in your user folder. Sign-in tokens and client secrets
+    history of created streams are in a settings file in your user folder. Sign-in tokens, client secrets, application
+    passwords, webhook addresses and the mail password
     are in your operating system's keychain (Windows Credential Manager, macOS Keychain, or the Linux Secret
     Service). Stream keys are not saved.</p>
 
   <h2>Who data is sent to</h2>
-  <p>The app sends requests only to Google (YouTube), Wix and Meta (Facebook), each only if you connected it, over HTTPS, to do what is described
-    above. Nothing is sent to Leaven Labs or to anyone else.</p>
+  <p>The app sends requests only to Google (YouTube), Wix, Meta (Facebook), your WordPress website, a web
+    address you entered, and the alert services you set up, each only if you connected it, and to GitHub for
+    the list of releases unless you switched that off. All of it is encrypted in transit and does only what
+    is described above. Nothing is sent to Leaven Labs or to anyone else.</p>
 
   <h2>Removing access and deleting data</h2>
   <p>Remove a destination in the app to delete its sign-in from your computer. You can also revoke the app's

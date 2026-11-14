@@ -1,35 +1,36 @@
-"""The main window: a menu at the left and five pages (Upcoming, Schedules, Destinations, History, Settings).
+"""The main window: a menu at the left and six pages (Upcoming, Schedules, Destinations, History, Alerts,
+Settings).
 
 While the window lives (also hidden in the tray) it asks engine.run_due() once a minute to create
-the streams whose time has come.
+the streams whose time has come, and then notify.after() to tell about what needs the user.
 """
 import os
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import QStandardPaths, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFrame, QHBoxLayout, QHeaderView, QMainWindow, QMenu,
-                               QScrollArea, QStackedWidget, QSystemTrayIcon, QTableWidget, QTableWidgetItem,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout,
+                               QHeaderView, QMainWindow, QMenu, QScrollArea, QStackedWidget, QSystemTrayIcon,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 import autostart
 import engine
 import facebook
+import net
+import notify
 import paths
 import recurrence
 import titles
 import ui
-import youtube
-from dialogs import KIND_NAMES, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog
-import wix
-from wizards import WixWizard, YouTubeWizard
+import updates
+import vault as vault_module
+from dialogs import KIND_NAMES, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog, time_edit
+from wizards import NOTIFY_WIZARDS, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
 
 CHECK_EVERY_MS = 60_000
-
-
-def short_day(when, clock):
-    """"Sat, Nov 13 at 9:00 AM"."""
-    return f"{when.strftime('%a')}, {titles.MONTHS[when.month - 1][:3]} {when.day} at {titles.format_time(when, clock)}"
+WIZARDS = {"youtube": YouTubeWizard, "wix": WixWizard, "wordpress": WordPressWizard, "webhook": WebhookWizard}
+DONE_WORDS = {"youtube": "Scheduled", "webhook": "Sent"}   # the others: "Updated"
+short_day = titles.short_day
 
 
 class Page(QWidget):
@@ -68,6 +69,27 @@ class Page(QWidget):
         self.fill()
         self.col.addStretch(1)
 
+    def section(self, title, rows):
+        self.col.addWidget(ui.label(title.upper(), "caps"))
+        card = ui.card()
+        box = QVBoxLayout(card)
+        box.setContentsMargins(18, 6, 18, 6)
+        box.setSpacing(0)
+        for i, (name, hint, widget) in enumerate(rows):
+            if i:
+                box.addWidget(ui.rule())
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 11, 0, 11)
+            words = QVBoxLayout()
+            words.setSpacing(2)
+            words.addWidget(ui.label(name, "strong"))
+            words.addWidget(ui.label(hint, "small", wrap=True))
+            row.addLayout(words, 1)
+            if widget:
+                row.addWidget(widget, 0, Qt.AlignVCenter)
+            box.addLayout(row)
+        self.col.addWidget(card)
+
     def empty(self, heading, text, button=None):
         card = ui.card()
         box = QVBoxLayout(card)
@@ -96,6 +118,17 @@ class UpcomingPage(Page):
         problem = self.vault.available()
         if problem:
             self.col.addWidget(ui.callout("No safe place for sign-ins", problem, "warn", "warn"))
+        new = updates.available(self.store)
+        if new:
+            self.col.addWidget(ui.callout(
+                f"Version {new['version']} is available",
+                f"You have {paths.VERSION}. <a href='{new['url']}'>Open the download page</a> and install it over "
+                "this one: your schedules, destinations and sign-ins are kept.", icon="upcoming"))
+        for dest_id, why in notify.settings(self.store)["health"].items():
+            dest = self.store.destination(dest_id)
+            if dest:
+                self.col.addWidget(ui.callout(f"The sign-in of “{dest['name']}” stopped working",
+                                              f"{why} Until then, nothing can be scheduled there.", "warn", "warn"))
         if not self.store.destinations or not self.store.schedules:
             first = not self.store.destinations
             self.empty("Two steps to your first automatic stream" if first else "Now create a schedule",
@@ -145,17 +178,20 @@ class UpcomingPage(Page):
                 chips.addWidget(ui.chip(name))
             elif entry and entry["status"] == "created":
                 url = entry.get("url")
-                done_word = "Updated" if dest["kind"] == "wix" else "Scheduled"
+                done_word = DONE_WORDS.get(dest["kind"], "Updated")
                 chips.addWidget(ui.chip(f"✓  {name} · {done_word}", "ok", "Open it in the browser" if url else "",
                                         (lambda _=False, u=url: QDesktopServices.openUrl(QUrl(u))) if url else None))
-            elif entry:
+            elif entry and entry.get("waiting"):
+                chips.addWidget(ui.chip(f"{name} · Waiting for YouTube", "warn", entry.get("note", "")))
+            elif entry and entry["status"] == "failed":
                 chips.addWidget(ui.chip(f"{name} · Failed", "no", entry.get("note", "")))
             else:
                 chips.addWidget(ui.chip(f"{name} · Planned"))
         chips.addStretch(1)
         mid.addLayout(chips)
         for dest, entry in item["targets"]:
-            if entry and not skipped and (entry["status"] == "failed" or entry.get("note")):
+            if entry and not skipped and not entry.get("waiting") and entry["status"] != "deleted" and (
+                    entry["status"] == "failed" or entry.get("note")):
                 mid.addWidget(ui.label(f"{KIND_NAMES[dest['kind']]}: {entry['note']}",
                                        "error" if entry["status"] == "failed" else "small", wrap=True))
         row.addLayout(mid, 1)
@@ -171,7 +207,11 @@ class UpcomingPage(Page):
                                             "is missing"))
             buttons.addWidget(ui.button("Edit", "mini", lambda: self.edit(item),
                                         "Another title, description or time for this one stream"))
-        if missing or skipped or not item["targets"]:
+        on_youtube = any(e and e["status"] == "created" and d["kind"] == "youtube" for d, e in item["targets"])
+        if on_youtube and not skipped:
+            buttons.addWidget(ui.button("Cancel", "mini", lambda: self.cancel(item),
+                                        "Delete this stream from YouTube and skip this date"))
+        elif missing or skipped or not item["targets"]:
             buttons.addWidget(ui.button("Restore" if skipped else "Skip", "mini", lambda: self.skip(item, not skipped)))
         buttons.addStretch(1)
         row.addLayout(buttons)
@@ -197,6 +237,19 @@ class UpcomingPage(Page):
 
     def update_now(self, item):
         self.window_.work(lambda: engine.sync(self.store, self.vault, item))
+
+    def cancel(self, item):
+        if not ui.ask(self, "Cancel stream", f"Delete “{item['title']}” from YouTube and skip this date?\n\nThe "
+                      "link people may already have stops working, and this cannot be undone. Restore creates "
+                      "a new stream with a new link."):
+            return
+
+        def job():
+            problems = engine.cancel(self.store, self.vault, item)
+            if problems:
+                raise net.ApiError("The stream could not be deleted. " + " ".join(problems))
+            return []
+        self.window_.work(job, loud=True)
 
     def skip(self, item, on):
         over = self.override(item)
@@ -240,7 +293,7 @@ class SchedulesPage(Page):
             chips.setSpacing(6)
             dests = [d for d in (self.store.destination(i) for i in s["destinations"])
                      if d and d["kind"] in engine.ENABLED]
-            if s.get("once") and not recurrence.occurrences(s, datetime.now(), datetime.now()):
+            if recurrence.ended(s, datetime.now()):
                 chips.addWidget(ui.chip("Finished: you can delete it"))
             for d in dests:
                 chips.addWidget(ui.chip(f"{KIND_NAMES[d['kind']]} · {d['name']}"))
@@ -275,25 +328,46 @@ class SchedulesPage(Page):
             self.window_.side_status()
 
     def delete(self, schedule):
-        if ui.ask(self, "Delete schedule", f"Delete “{schedule['name']}”? Streams it already created stay "
-                                           "on the platforms."):
-            self.store.schedules.remove(schedule)
-            self.store.save()
-            self.refresh()
-            self.window_.side_status()
+        if not ui.ask(self, "Delete schedule", f"Delete “{schedule['name']}”?"):
+            return
+        existing = engine.created_of(self.store, schedule)
+        if existing and ui.ask(self, "Delete schedule",
+                               f"It has {len(existing)} coming stream{'s' if len(existing) != 1 else ''} on YouTube "
+                               "already. Delete those from YouTube too?\n\nNo: they stay on YouTube as they are."):
+            def job():
+                problems = [p for item in existing for p in engine.cancel(self.store, self.vault, item)]
+                if problems:
+                    raise net.ApiError("The schedule was kept, because a stream could not be deleted. "
+                                       + " ".join(problems))
+                self.store.schedules.remove(schedule)
+                self.store.save()
+                return []
+            self.window_.work(job, loud=True)
+            return
+        self.store.schedules.remove(schedule)
+        self.store.save()
+        self.refresh()
+        self.window_.side_status()
 
 
 class DestinationsPage(Page):
     def __init__(self, window):
         super().__init__(window, "Destinations", "Where your streams are scheduled. A guide takes you through each step.")
         self.actions.addWidget(ui.button("Add YouTube", "primary", lambda: self.add(YouTubeWizard)))
-        self.actions.addWidget(ui.button("Add Wix website", "primary", lambda: self.add(WixWizard)))
+        site = ui.button("Add a website", "primary")
+        menu = QMenu(site)
+        menu.addAction("Wix website", lambda: self.add(WixWizard))
+        menu.addAction("WordPress website", lambda: self.add(WordPressWizard))
+        menu.addAction("Another service (webhook)", lambda: self.add(WebhookWizard))
+        site.setMenu(menu)
+        self.actions.addWidget(site)
         self.results = {}
 
     def fill(self):
         if not self.store.destinations:
-            self.empty("Nothing connected yet", "Add a YouTube channel first. A Wix website can then show its "
+            self.empty("Nothing connected yet", "Add a YouTube channel first. A website can then show its "
                        "streams. You can add several of each.")
+        health = notify.settings(self.store)["health"]
         for d in self.store.destinations:
             card = ui.card()
             row = QHBoxLayout(card)
@@ -311,11 +385,18 @@ class DestinationsPage(Page):
                 o = d.get("options", {})
                 detail = (f"Wix website  ·  collection {o.get('collection')}  ·  item “{o.get('item_title')}”  ·  "
                           f"{'publishes the site' if o.get('publish') else 'shows the YouTube stream'}")
+            elif d["kind"] == "wordpress":
+                o = d.get("options", {})
+                detail = (f"WordPress website  ·  {d.get('account_id', '').split('//')[-1]}  ·  pattern "
+                          f"“{o.get('pattern_title')}”")
+            elif d["kind"] == "webhook":
+                detail = "A web address that is told about each new YouTube stream"
             else:
                 detail = "Facebook Page  ·  switched off in this version"
             mid.addWidget(ui.label(detail, "sub", wrap=True))
             off = d["kind"] not in engine.ENABLED
-            kind, text = self.results.get(d["id"], ("small", f"Sign-in kept in {self.vault.where()}"))
+            kind, text = self.results.get(d["id"], ("error", health[d["id"]]) if d["id"] in health else
+                                          ("small", f"Sign-in kept in {self.vault.where()}"))
             if off:
                 kind, text = "small", ("Facebook no longer lets an app schedule a live video with a Page's persistent "
                                        "stream key, so schedules skip this destination. You can remove it.")
@@ -326,23 +407,51 @@ class DestinationsPage(Page):
                                         "Ask the platform whether the saved sign-in still works"), 0, Qt.AlignTop)
             if d["kind"] == "youtube":
                 row.addWidget(ui.button("Options", "mini", lambda _=False, d=d: self.options(d)), 0, Qt.AlignTop)
+            if not off:
+                row.addWidget(ui.button("Reconnect", "mini", lambda _=False, d=d: self.reconnect(d),
+                                        "Go through the guide again and save a new sign-in. The schedules that "
+                                        "send here stay as they are."), 0, Qt.AlignTop)
             row.addWidget(ui.button("Remove", "mini", lambda _=False, d=d: self.remove(d)), 0, Qt.AlignTop)
             self.col.addWidget(card)
         self.col.addWidget(ui.callout(
             "Where your sign-ins are kept",
             f"Tokens and client secrets are stored in <b>{self.vault.where()}</b>, encrypted with your login to this "
             "computer. They are never written to the app's settings file, and each is sent only to its own "
-            "platform (Google or Wix). Removing a destination deletes its sign-in from this computer."))
+            "platform (Google, or your website). Removing a destination deletes its sign-in from this computer."))
 
     def add(self, wizard_class):
         wizard = wizard_class(self, self.store, self.vault)
         if wizard.exec():
             self.refresh()
-            if self.store.schedules and wizard.destination["kind"] != "wix" and ui.ask(
+            if self.store.schedules and wizard.destination["kind"] == "youtube" and ui.ask(
                     self, "Add to schedules", f"Send every existing schedule to “{wizard.destination['name']}” too?"):
                 for s in self.store.schedules:
                     s["destinations"].append(wizard.destination["id"])
                 self.store.save()
+
+    def reconnect(self, dest):
+        """Run the guide again and give the new sign-in to this destination, which keeps its id (so its
+        schedules and history stay with it)."""
+        wizard = WIZARDS[dest["kind"]](self, self.store, self.vault)
+        wizard.defaults = dest.get("options")
+        if dest["kind"] == "youtube":
+            wizard.client_id.setText(dest.get("client_id", ""))
+        if not wizard.exec():
+            return
+        new = wizard.destination
+        try:
+            self.vault.move(dest["kind"], new["id"], dest["id"])
+        except vault_module.VaultError as exc:
+            ui.tell(self, "Reconnect", f"{exc}\n\nThe new sign-in was added as a separate destination.")
+            self.refresh()
+            return
+        self.store.destinations.remove(new)
+        new["id"] = dest["id"]
+        self.store.destinations[self.store.destinations.index(dest)] = new
+        notify.settings(self.store)["health"].pop(dest["id"], None)
+        self.results.pop(dest["id"], None)
+        self.store.save()
+        self.window_.refresh()
 
     def options(self, dest):
         dialog = YouTubeOptionsDialog(self, dest)
@@ -355,25 +464,19 @@ class DestinationsPage(Page):
         self.results[dest["id"]] = ("small", "Testing ...")
         self.refresh()
 
-        def work():
-            if dest["kind"] == "youtube":
-                token = youtube.access_token(dest["client_id"], self.vault.get(dest["id"], "client_secret"),
-                                             self.vault.get(dest["id"], "refresh_token"))
-                return youtube.channel(token)["title"]
-            o = dest["options"]
-            data = wix.item(self.vault.get(dest["id"], "api_key"), dest["account_id"], o["collection"], o["item_id"])
-            return f"{dest['name']}: {data.get('title') or o['item_id']}"
-
         def done(name, error):
             self.results[dest["id"]] = ("error", str(error)) if error else ("good", f"✓  Works: connected to “{name}”")
+            if not error:
+                notify.settings(self.store)["health"].pop(dest["id"], None)
             self.refresh()
-        ui.run_async(work, done)
+        ui.run_async(lambda: engine.test_destination(self.vault, dest), done)
 
     def remove(self, dest):
         if not ui.ask(self, "Remove destination", f"Remove “{dest['name']}” and delete its sign-in from this "
                                                   "computer? Streams already created stay on the platform."):
             return
         self.vault.forget(dest["id"], dest["kind"])
+        notify.settings(self.store)["health"].pop(dest["id"], None)
         self.store.destinations.remove(dest)
         for s in self.store.schedules:
             if dest["id"] in s["destinations"]:
@@ -415,14 +518,16 @@ class HistoryPage(Page):
         for row, e in enumerate(self.store.history):
             when, at = datetime.fromisoformat(e["when"]), datetime.fromisoformat(e["at"])
             ok = e["status"] == "created"
+            result = (f"✓ {DONE_WORDS.get(e['kind'], 'Updated')}" if ok else "Deleted" if e["status"] == "deleted"
+                      else "Waiting" if e.get("waiting") else "Failed")
             cells = [short_day(when, self.clock), f"{KIND_NAMES.get(e['kind'], e['kind'])} · {e['destination_name']}",
-                     e["title"], ("✓ Updated" if e["kind"] == "wix" else "✓ Scheduled") if ok else "Failed",
-                     short_day(at, self.clock)]
+                     e["title"], result,
+                     short_day(at, self.clock) if at.year > 2000 else ""]   # 2000: marked to be done again
             for column, text in enumerate(cells):
                 cell = QTableWidgetItem(text)
                 cell.setToolTip(e.get("note") or text if column == 3 else text)
                 if column == 3:
-                    cell.setForeground(QColor(ui.colors["ok" if ok else "no"]))
+                    cell.setForeground(QColor(ui.colors["ok" if ok else "no" if result == "Failed" else "sub"]))
                 t.setItem(row, column, cell)
         header = t.horizontalHeader()
         for column, mode in enumerate([QHeaderView.ResizeToContents, QHeaderView.Stretch, QHeaderView.Stretch,
@@ -443,7 +548,7 @@ class HistoryPage(Page):
     def selected(self):
         e = self.entry()
         if self.table is not None:
-            self.note.setObjectName("error" if e and e["status"] != "created" else "sub")
+            self.note.setObjectName("error" if e and e["status"] == "failed" and not e.get("waiting") else "sub")
             ui.set_prop(self.note, "x", 1)
             self.note.setText((e.get("note") or f"Attempts: {e.get('attempts', 1)}") if e else "")
         self.open_button.setEnabled(bool(e and e.get("url")))
@@ -471,6 +576,143 @@ class HistoryPage(Page):
                      done)
 
 
+class AlertsPage(Page):
+    """Being told when the app needs you: where messages go, and which ones."""
+    ABOUT = {"email": "To one or more email addresses, sent through a mail account of yours.",
+             "discord": "To a channel of your Discord server.",
+             "slack": "To a channel of your Slack workspace.",
+             "pushover": "To your phone, as a notification with a sound."}
+    EVENTS = [("failed", "A stream could not be scheduled",
+               "At once, when a stream fails to be created, or its start came without it. Told once per stream."),
+              ("signin", "A sign-in stopped working",
+               "Once a day the app asks each destination whether its sign-in still works, so you hear of a "
+               "revoked sign-in before the next stream is due."),
+              ("summary", "Weekly summary",
+               "The streams of the coming seven days and whether each one is in place. Silence then means "
+               "something is wrong."),
+              ("created", "A stream was scheduled", "Each new stream with its link, for example to share it.")]
+
+    def __init__(self, window):
+        super().__init__(window, "Alerts", "Be told when a stream needs you, without looking at this computer.")
+        self.results = {}
+
+    def fill(self):
+        cfg = notify.settings(self.store)
+        if cfg["last_error"]:
+            self.col.addWidget(ui.callout("A message could not be sent", cfg["last_error"].replace("<", "&lt;"),
+                                          "warn", "warn"))
+        if not cfg["channels"]:
+            self.col.addWidget(ui.callout(
+                "Nothing is set up yet",
+                "Choose at least one way to be told below. A guide takes you through each step. Until then the "
+                "app only shows messages on this computer, in the tray.", icon="alerts"))
+        self.col.addWidget(ui.label("WHERE TO SEND", "caps"))
+        for channel, name in notify.CHANNELS.items():
+            conf = cfg["channels"].get(channel)
+            card = ui.card()
+            row = QHBoxLayout(card)
+            row.setContentsMargins(18, 12, 16, 12)
+            row.setSpacing(14)
+            row.addWidget(ui.Icon(channel, 30), 0, Qt.AlignTop)
+            mid = QVBoxLayout()
+            mid.setSpacing(3)
+            mid.addWidget(ui.label(name, "big"))
+            detail = self.ABOUT[channel]
+            if conf and channel == "email":
+                detail = f"From {conf.get('user')} to {conf.get('to')}"
+            mid.addWidget(ui.label(detail, "sub", wrap=True))
+            kind, text = self.results.get(channel, ("small", f"Set up. Its key is kept in {self.vault.where()}."
+                                                    if conf else "Not set up"))
+            mid.addWidget(ui.label(text, kind, wrap=True))
+            row.addLayout(mid, 1)
+            if conf:
+                switch = ui.Switch(conf.get("on", True))
+                switch.setToolTip("Send messages this way")
+                switch.toggled.connect(lambda on, c=channel: self.switch(c, on))
+                row.addWidget(switch, 0, Qt.AlignTop)
+                row.addWidget(ui.button("Test", "mini", lambda _=False, c=channel: self.test(c),
+                                        "Send a test message now"), 0, Qt.AlignTop)
+            row.addWidget(ui.button("Change" if conf else "Set up", "mini" if conf else "primary",
+                                    lambda _=False, c=channel: self.setup(c)), 0, Qt.AlignTop)
+            if conf:
+                row.addWidget(ui.button("Remove", "mini", lambda _=False, c=channel: self.remove(c)), 0, Qt.AlignTop)
+            self.col.addWidget(card)
+
+        rows = []
+        for key, name, hint in self.EVENTS:
+            switch = ui.Switch(cfg["events"][key])
+            switch.toggled.connect(lambda on, k=key: self.set_event(k, on))
+            widget = switch
+            if key == "summary":
+                widget = QWidget()
+                line = QHBoxLayout(widget)
+                line.setContentsMargins(0, 0, 0, 0)
+                line.setSpacing(8)
+                day = QComboBox()
+                for i, text in enumerate(titles.WEEKDAYS):
+                    day.addItem(text, i)
+                day.setCurrentIndex(int(cfg["summary_day"]))
+                day.currentIndexChanged.connect(lambda i: self.set("summary_day", i))
+                at = time_edit(cfg["summary_time"], self.clock)
+                at.timeChanged.connect(lambda t: self.set("summary_time", t.toString("HH:mm")))
+                send = ui.button("Send it now", "mini", self.summary_now, "Send this week's summary now, to see it")
+                for w in (day, at, send, switch):
+                    line.addWidget(w)
+            rows.append((name, hint, widget))
+        self.section("What to send", rows)
+        self.col.addWidget(ui.callout(
+            "The computer must be on for this too",
+            "Messages are sent by this app from this computer, straight to the service you chose. If the "
+            "computer is off, nothing can tell you so: the weekly summary is the check that it is still at work.",
+            icon="upcoming"))
+
+    def set(self, key, value):
+        notify.settings(self.store)[key] = value
+        self.store.save()
+
+    def set_event(self, key, on):
+        notify.settings(self.store)["events"][key] = on
+        self.store.save()
+
+    def switch(self, channel, on):
+        notify.settings(self.store)["channels"][channel]["on"] = on
+        self.store.save()
+
+    def setup(self, channel):
+        if NOTIFY_WIZARDS[channel](self, self.store, self.vault).exec():
+            self.results.pop(channel, None)
+            self.refresh()
+
+    def remove(self, channel):
+        if ui.ask(self, "Remove", f"Stop sending by {notify.CHANNELS[channel]} and delete its key from this computer?"):
+            notify.forget(self.store, self.vault, channel)
+            self.results.pop(channel, None)
+            self.refresh()
+
+    def test(self, channel):
+        self.results[channel] = ("small", "Sending ...")
+        self.refresh()
+        config = notify.settings(self.store)["channels"][channel]
+
+        def done(_, error):
+            self.results[channel] = ("error", str(error)) if error else ("good", "✓  Sent. Check that it arrived.")
+            self.refresh()
+        ui.run_async(lambda: notify.send_one(channel, config, self.vault, "Test from Stream Scheduler",
+                                             "This is how you will be told when a stream needs you."), done)
+
+    def summary_now(self):
+        if not notify.active(self.store):
+            ui.tell(self, "Weekly summary", "Set up a way to be told first.")
+            return
+
+        def done(count, error):
+            cfg = notify.settings(self.store)
+            ui.tell(self, "Weekly summary", "Sent." if count else str(error or cfg["last_error"]))
+            self.refresh()
+        ui.run_async(lambda: notify.send(self.store, self.vault, "Your streams this week",
+                                         notify.summary_text(self.store, datetime.now())), done)
+
+
 class SettingsPage(Page):
     def __init__(self, window):
         super().__init__(window, "Settings", f"{paths.APP_NAME} {paths.VERSION}")
@@ -486,6 +728,16 @@ class SettingsPage(Page):
         auto = ui.Switch(autostart.is_enabled())
         auto.toggled.connect(self.set_autostart)
         folder = ui.button("Open folder", clicked=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(paths.data_dir())))
+        newer = ui.Switch(s.get("update_check", True))
+        newer.toggled.connect(lambda on: self.set("update_check", on))
+        new = updates.available(self.store)
+        look = ui.button("Check now", clicked=self.check_update)
+        backup = QWidget()
+        line = QHBoxLayout(backup)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(8)
+        line.addWidget(ui.button("Save a backup ...", clicked=self.backup))
+        line.addWidget(ui.button("Restore ...", clicked=self.restore))
         self.section("Look", [("Theme", "Auto follows your system.", theme),
                               ("Times", "How times are shown, and written by {time}.", clock)])
         self.section("Running in the background", [
@@ -493,38 +745,72 @@ class SettingsPage(Page):
              "The app stays in the tray (menu bar) so streams are still scheduled.", tray),
             ("Start when I log in", "Starts hidden in the tray. Without this, open the app before a stream is due; "
                                     "it catches up on what it missed.", auto)])
+        self.section("New versions", [
+            ("Tell me about new versions", "Once a day the app asks GitHub for this project's list of releases. "
+             "Nothing about you is sent, and nothing is downloaded or installed by itself.", newer),
+            (f"This is version {paths.VERSION}", f"Version {new['version']} is available: see the Upcoming page."
+             if new else "No newer version is known.", look)])
         self.section("Your data", [
             ("Settings and history", f"{paths.data_dir()}\nNo passwords or tokens are in this folder.", folder),
+            ("Backup", "One file with your schedules, destinations, history and settings, to keep or to move to "
+             "another computer. Sign-ins and thumbnail pictures are not in it.", backup),
             ("Sign-ins", f"Kept in {self.vault.where()}. Remove a destination to delete its sign-in.", None)])
         self.col.addWidget(ui.callout(
             "The computer must be on", "Streams are created by this computer at the time you chose. If it is "
             "asleep or off at that time, the app creates them as soon as it runs again, as long as the stream is "
             "still more than 10 minutes away.", icon="upcoming"))
 
-    def section(self, title, rows):
-        self.col.addWidget(ui.label(title.upper(), "caps"))
-        card = ui.card()
-        box = QVBoxLayout(card)
-        box.setContentsMargins(18, 6, 18, 6)
-        box.setSpacing(0)
-        for i, (name, hint, widget) in enumerate(rows):
-            if i:
-                box.addWidget(ui.rule())
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 11, 0, 11)
-            words = QVBoxLayout()
-            words.setSpacing(2)
-            words.addWidget(ui.label(name, "strong"))
-            words.addWidget(ui.label(hint, "small", wrap=True))
-            row.addLayout(words, 1)
-            if widget:
-                row.addWidget(widget, 0, Qt.AlignVCenter)
-            box.addLayout(row)
-        self.col.addWidget(card)
-
     def set(self, key, value):
         self.store.settings[key] = value
         self.store.save()
+
+    def check_update(self):
+        def done(new, error):
+            ui.tell(self, "New versions", str(error) if error else
+                    f"Version {new['version']} is available. The Upcoming page has the link." if new else
+                    f"You have the newest version ({paths.VERSION}).")
+            self.refresh()
+        ui.run_async(lambda: updates.check(self.store, force=True), done)
+
+    def backup(self):
+        folder = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        name = f"Stream Scheduler backup {datetime.now().strftime('%Y-%m-%d')}.json"
+        path, _ = QFileDialog.getSaveFileName(self, "Save a backup", os.path.join(folder, name), "Backup (*.json)")
+        if not path:
+            return
+        try:
+            self.store.backup(path)
+        except OSError as exc:
+            ui.tell(self, "Backup", f"The file could not be written: {exc}")
+            return
+        ui.tell(self, "Backup", "Saved. The file holds no passwords or tokens: after restoring it on another "
+                                "computer, use Reconnect on each destination.")
+
+    def restore(self):
+        if self.window_.busy:
+            ui.tell(self, "Restore", "The app is working. Try again in a moment.")
+            return
+        folder = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        path, _ = QFileDialog.getOpenFileName(self, "Restore a backup", folder, "Backup (*.json)")
+        if not path or not ui.ask(self, "Restore", "Replace the schedules, destinations, history and settings of "
+                                                   "this computer with the backup's?\n\nWhat is here now is lost."):
+            return
+        try:
+            self.store.restore(path)
+        except (OSError, ValueError) as exc:
+            ui.tell(self, "Restore", f"Nothing was changed. {exc}")
+            return
+        lost = [d["name"] for d in self.store.destinations if d["kind"] in engine.ENABLED and not all(
+            self.vault.has(d["id"], n) for n in vault_module.SECRETS.get(d["kind"], []))]
+        ui.apply_theme(QApplication.instance(), self.store.settings["theme"])
+        self.window_.refresh()
+        ui.tell(self, "Restore", "Restored." + (
+            "\n\nThese destinations have no sign-in on this computer. Open Destinations and click Reconnect "
+            "on each: " + ", ".join(lost) + "." if lost else "") + (
+            "\n\nThe ways to be told (Alerts) also need their keys again: use Change on each."
+            if notify.settings(self.store)["channels"] and not all(
+                self.vault.has(vault_module.NOTIFY, n) for c in notify.settings(self.store)["channels"]
+                for n in notify.SECRETS.get(c, [])) else ""))
 
     def set_autostart(self, on):
         try:
@@ -539,7 +825,7 @@ class SettingsPage(Page):
 class MainWindow(QMainWindow):
     PAGES = [("upcoming", "Upcoming", UpcomingPage), ("schedules", "Schedules", SchedulesPage),
              ("destinations", "Destinations", DestinationsPage), ("history", "History", HistoryPage),
-             ("settings", "Settings", SettingsPage)]
+             ("alerts", "Alerts", AlertsPage), ("settings", "Settings", SettingsPage)]
 
     def __init__(self, store, vault, background=True):
         super().__init__()
@@ -548,6 +834,7 @@ class MainWindow(QMainWindow):
         self.last_check = None
         self.quitting = False
         self.told_tray = False
+        self.told_version = ""
         self.setWindowTitle(paths.APP_NAME)
         self.resize(1120, 740)
         self.setMinimumSize(900, 600)
@@ -646,16 +933,29 @@ class MainWindow(QMainWindow):
     # ---- the work ----
     def check(self):
         """Every minute: create what is due."""
-        self.work(lambda: engine.run_due(self.store, self.vault))
+        self.work(lambda: self.background(engine.run_due))
 
     def check_all(self):
         """The Check now button: also see that what was created is still there."""
-        self.work(lambda: engine.check(self.store, self.vault))
+        self.work(lambda: self.background(engine.check))
 
-    def work(self, fn):
-        """Run engine work off the window's thread, one at a time, then show what happened."""
+    def background(self, fn):
+        """A round of the app's own work: the scheduling, then telling about it, then (once a day) a look
+        for a newer version. Runs off the window's thread."""
+        entries = fn(self.store, self.vault)
+        notify.after(self.store, self.vault, entries)
+        try:
+            updates.check(self.store)
+        except Exception:   # never in the way of the scheduling
+            pass
+        return entries
+
+    def work(self, fn, loud=False):
+        """Run engine work off the window's thread, one at a time, then show what happened. With loud,
+        an error is also shown in a message box (for what the user just asked for)."""
         if self.busy:
             return
+        self.loud = loud
         self.busy = True
         self.pages[0].check_button.setEnabled(False)
         self.side_status()
@@ -667,8 +967,16 @@ class MainWindow(QMainWindow):
         self.pages[0].check_button.setEnabled(True)
         self.refresh()
         entries = entries or []
+        if error and self.loud and self.isVisible():
+            ui.tell(self, paths.APP_NAME, str(error))
+            return
+        new = updates.available(self.store)
+        if new and self.tray and self.told_version != new["version"]:
+            self.told_version = new["version"]
+            self.tray.showMessage("A new version is available", f"Stream Scheduler {new['version']}. Open the app "
+                                                                "for the link.", QSystemTrayIcon.Information)
         made = [e for e in entries if e["status"] == "created"]
-        failed = [e for e in entries if e["status"] != "created"]
+        failed = [e for e in entries if e["status"] == "failed" and not e.get("waiting")]
         if self.tray and (made or failed or error):
             if failed or error:
                 first = failed[0] if failed else None

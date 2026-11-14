@@ -1,4 +1,5 @@
-"""The step-by-step guides that connect a destination: a YouTube channel or a Facebook Page.
+"""The step-by-step guides: connecting a destination (a YouTube channel, a website) and setting up a
+way to be told (email, Discord, Slack, Pushover).
 
 Each guide explains what to click on the platform's own pages, says why each step is safe, and ends
 by saving the sign-in in the system keychain (vault.py). Nothing is saved before the last step.
@@ -9,10 +10,14 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QFrame, QGridLayout, QHBoxLay
                                QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
 import facebook
+import net
+import notify
 import ui
+import webhook
+import wordpress
 import youtube
 from store import new_id
-from vault import VaultError
+from vault import NOTIFY, MemoryVault, VaultError
 
 
 def steps(*lines):
@@ -30,6 +35,29 @@ def secret_field(placeholder):
     edit.setEchoMode(QLineEdit.Password)   # dots, so it is not read over a shoulder or in a screen share
     edit.setPlaceholderText(placeholder)
     return edit
+
+
+def field_grid(rows):
+    """Names at the left, their fields at the right, as one widget."""
+    box = QWidget()
+    grid = QGridLayout(box)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setHorizontalSpacing(12)
+    grid.setVerticalSpacing(8)
+    for i, (text, widget) in enumerate(rows):
+        grid.addWidget(ui.label(text, "strong"), i, 0)
+        grid.addWidget(widget, i, 1)
+    return box
+
+
+def action_row(button, state):
+    """A button with a line of words at its right (what it is doing, or what it found)."""
+    box = QWidget()
+    row = QHBoxLayout(box)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.addWidget(button)
+    row.addWidget(state, 1)
+    return box
 
 
 class YouTubeOptions(QWidget):
@@ -57,11 +85,26 @@ class YouTubeOptions(QWidget):
         self.stream.setCurrentIndex(wanted if wanted > 0 else min(1, self.stream.count() - 1))
         self.kids = ui.Switch(options.get("made_for_kids", False))
         self.auto = ui.Switch(options.get("auto_start", True))
-        rows = [("Who can watch", self.privacy, ""),
+        self.latency = QComboBox()
+        for key, text in youtube.LATENCY:
+            self.latency.addItem(text, key)
+        self.latency.setCurrentIndex(max(0, self.latency.findData(options.get("latency") or "normal")))
+        self.category = QComboBox()
+        for key, text in youtube.CATEGORIES:
+            self.category.addItem(text, key)
+        self.category.setCurrentIndex(max(0, self.category.findData(str(options.get("category") or ""))))
+        self.playlist = QLineEdit(options.get("playlist", ""))
+        self.playlist.setPlaceholderText("Optional: paste a playlist's link from YouTube")
+        self.playlist.setMinimumWidth(340)
+        rows = [("Who can watch", self.privacy, "A schedule can say otherwise for its own streams."),
                 ("Stream key", self.stream, "With a key chosen, your encoder (OBS, ATEM ...) keeps the same key every week."),
                 ("Made for kids", self.kids, "YouTube requires an answer. Most services and events are not."),
                 ("Start and stop by itself", self.auto,
-                 "The broadcast goes live when your encoder starts sending, and ends when it stops.")]
+                 "The broadcast goes live when your encoder starts sending, and ends when it stops."),
+                ("Delay", self.latency, "How far viewers are behind the camera. Lower delays mean lower picture "
+                                        "quality, and ultra low has no captions or 1440p and above."),
+                ("Category", self.category, ""),
+                ("Playlist", self.playlist, "Every new stream is added to it. A schedule can name another one.")]
         for i, (name, widget, hint) in enumerate(rows):
             grid.addWidget(ui.label(name, "strong"), i * 2, 0)
             grid.addWidget(widget, i * 2, 1, Qt.AlignLeft)
@@ -73,7 +116,14 @@ class YouTubeOptions(QWidget):
         return {"privacy": self.privacy.currentData(), "stream_id": self.stream.currentData(),
                 "stream_title": self.stream.currentText() if self.stream.currentData() else "",
                 "made_for_kids": self.kids.isChecked(), "auto_start": self.auto.isChecked(),
-                "auto_stop": self.auto.isChecked()}
+                "auto_stop": self.auto.isChecked(), "latency": self.latency.currentData(),
+                "category": self.category.currentData(), "playlist": self.playlist.text().strip()}
+
+    def problem(self):
+        """A sentence when something typed here cannot work ("" when all is well)."""
+        if self.playlist.text().strip() and not youtube.playlist_id(self.playlist.text()):
+            return "The playlist is not understood. Paste the playlist's link from YouTube, or leave it empty."
+        return ""
 
 
 class Wizard(QDialog):
@@ -292,7 +342,8 @@ class YouTubeWizard(Wizard):
                        "<b>Manage your YouTube account</b>: the one permission YouTube offers for creating "
                        "broadcasts. The app uses it only to create the streams of your schedules and to read "
                        "your channel's name and stream keys.")],
-            check=lambda: "" if self.tokens else "Sign in with Google first.")
+            check=lambda: (self.options.problem() if self.options else "") if self.tokens
+            else "Sign in with Google first.")
         self.ready()
 
     def check_client(self):
@@ -331,7 +382,7 @@ class YouTubeWizard(Wizard):
         self.sign_state.setText(f"✓  Connected to “{self.channel['title']}”")
         self.sign_button.setText("Sign in again")
         ui.clear(self.options_box)
-        self.options = YouTubeOptions(streams=streams)
+        self.options = YouTubeOptions(getattr(self, "defaults", None), streams=streams)
         self.options_box.addWidget(self.options)
         self.raise_()
         self.activateWindow()
@@ -692,3 +743,465 @@ class WixWizard(Wizard):
         self.store.save()
         self.destination = dest
         return ""
+
+
+class WordPressWizard(Wizard):
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, "Connect a WordPress website", "wordpress")
+        self.store, self.vault = store, vault
+        self.found = []
+        self.destination = None
+
+        self.add_step("Before you start", "Show the stream on your WordPress website", [
+            ui.rich("After a schedule creates its YouTube stream, Stream Scheduler can put that stream on a page "
+                    "of your WordPress site, so the page always shows the coming service."),
+            ui.rich("It works through a <b>synced pattern</b>: a block you place on your page once. The app "
+                    "replaces what is inside that pattern with the new YouTube video, and touches nothing else "
+                    "on the page. You set this up once, in about ten minutes."),
+            steps("WordPress <b>5.6 or newer</b>, on an address that starts with <b>https://</b>.",
+                  "A WordPress user with the role <b>Editor</b> or <b>Administrator</b>.",
+                  "The schedule must also send to a <b>YouTube</b> channel. The website shows that stream.",
+                  "On WordPress.com this needs a plan that allows plugins; a site you host yourself has it "
+                  "already."),
+            ui.callout("How this keeps your website safe",
+                       f"The app keeps one <b>application password</b>, in <b>{vault.where()}</b>, encrypted "
+                       "with your login. It is not your WordPress password: it cannot be used to log in to the "
+                       "dashboard, and you can revoke it in your profile at any time."),
+            ui.callout("Not tried on a real site yet",
+                       "This guide follows WordPress's documented way of working, but it has not been confirmed "
+                       "on a live website. Check the page after the first stream is scheduled.", "warn", "warn")])
+
+        self.add_step("Make the pattern", "Put a synced pattern on your page", [
+            steps("In the WordPress dashboard, open the page that should show the stream, in the editor.",
+                  "Where the video should be, add a <b>YouTube</b> block (type <b>/youtube</b>) and paste any "
+                  "YouTube link for now.",
+                  "Select the block, open its <b>Options</b> menu (the three dots) and choose <b>Create "
+                  "pattern</b>.",
+                  "Name it <b>Livestream</b>, leave <b>Synced</b> switched on, and click <b>Create</b> (older "
+                  "versions call this <b>Create Reusable block</b>).",
+                  "Click <b>Update</b> (or <b>Publish</b>) to save the page."),
+            ui.callout("Why 'Synced'", "A synced pattern shows the same content everywhere it is placed, and "
+                       "changes when the pattern changes. That is what lets the app update your page without "
+                       "editing the page itself. A pattern that is not synced is only a copy.")])
+
+        self.add_step("Application password", "Create an application password", [
+            steps("In the dashboard, open <b>Users → Profile</b> (your own profile).",
+                  "Scroll down to <b>Application Passwords</b>.",
+                  "Type the name <b>Stream Scheduler</b> and click <b>Add New Application Password</b>.",
+                  "Copy the password WordPress shows (six groups of four letters). It is shown only once.",
+                  "Note your <b>user name</b>: it is at the top of the same page."),
+            ui.callout("No 'Application Passwords' section?",
+                       "WordPress hides it when the site does not use https, and some security plugins switch "
+                       "it off. Ask whoever looks after the site to enable application passwords.", "warn", "warn"),
+            ui.callout("Treat it like a password",
+                       f"It is saved in {vault.where()}, not in a file. If it ever leaks, click <b>Revoke</b> "
+                       "next to it in your profile and make a new one.")])
+
+        self.name = QLineEdit("Website")
+        self.site = QLineEdit()
+        self.site.setPlaceholderText("https://www.example.org")
+        self.user = QLineEdit()
+        self.user.setPlaceholderText("Your WordPress user name")
+        self.password = secret_field("Application password")
+        self.page_url = QLineEdit()
+        self.page_url.setPlaceholderText("Optional: the page's address, for the Open button (https://...)")
+        self.find_button = ui.button("Find my patterns", "primary", self.find)
+        self.find_state = ui.label("", "sub", wrap=True)
+        self.pattern = QComboBox()
+        self.pattern.setEnabled(False)
+        self.pattern.addItem("The site's synced patterns appear here")
+        self.show_title = ui.Switch(False)
+        self.add_step("Connect", "Connect the website", [
+            field_grid([("Name in this app", self.name), ("Website address", self.site), ("User name", self.user),
+                        ("Application password", self.password), ("Page", self.page_url)]),
+            action_row(self.find_button, self.find_state), self.pattern,
+            ui.toggle_row(self.show_title, "Also write the stream's title above the video"),
+            ui.callout("If the page does not change",
+                       "A caching plugin or service can keep showing the old page for a while. Clear its cache "
+                       "once, or exclude this page from caching.")],
+            check=self.check)
+        self.ready()
+
+    def check(self):
+        if self.found:
+            return ""
+        if self.find_button.isEnabled():
+            self.find()
+        return self.error.text() or "Looking for your patterns ... choose one when they appear, then click Finish."
+
+    def find(self):
+        self.error.setText("")
+        site, user, password = self.site.text(), self.user.text().strip(), self.password.text().strip()
+        try:
+            wordpress.site_address(site)
+        except net.ApiError as exc:
+            self.error.setText(str(exc))
+            return
+        if not user or len(password) < 8:
+            self.error.setText("Fill in the user name and the application password.")
+            return
+        problem = self.vault.available()
+        if problem:
+            self.error.setText(problem)
+            return
+        self.find_button.setEnabled(False)
+        self.find_state.setText("Asking WordPress ...")
+        ui.run_async(lambda: wordpress.patterns(site, user, password), self.found_patterns)
+
+    def found_patterns(self, patterns, error):
+        self.find_button.setEnabled(True)
+        self.find_state.setText("")
+        if error:
+            self.error.setText(str(error))
+            return
+        if not patterns:
+            self.error.setText("The site has no synced pattern yet. Make one (step 2), then try again.")
+            return
+        self.found = patterns
+        self.pattern.clear()
+        for p in patterns:
+            self.pattern.addItem(p["title"], p["id"])
+        self.pattern.setEnabled(True)
+        self.find_state.setText(f"✓  Found {len(patterns)} pattern{'s' if len(patterns) != 1 else ''}. Choose "
+                                "yours below, then click Finish.")
+
+    def finish(self):
+        dest = {"id": new_id(), "kind": "wordpress", "name": self.name.text().strip() or "Website",
+                "account_id": wordpress.site_address(self.site.text()),
+                "options": {"user": self.user.text().strip(), "pattern_id": self.pattern.currentData(),
+                            "pattern_title": self.pattern.currentText(), "show_title": self.show_title.isChecked(),
+                            "page_url": self.page_url.text().strip()}}
+        try:
+            self.vault.set(dest["id"], "app_password", self.password.text().strip())
+        except VaultError as exc:
+            return str(exc)
+        self.password.clear()
+        self.store.destinations.append(dest)
+        self.store.save()
+        self.destination = dest
+        return ""
+
+
+class WebhookWizard(Wizard):
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, "Connect a web address", "webhook")
+        self.store, self.vault = store, vault
+        self.destination = None
+        sample = ("{\n  \"event\": \"stream.scheduled\",\n  \"title\": \"Sunday Service - November 14, 2027\",\n"
+                  "  \"description\": \"Join us live this Sunday.\",\n"
+                  "  \"url\": \"https://www.youtube.com/watch?v=abc123\",\n  \"video_id\": \"abc123\",\n"
+                  "  \"start\": \"2027-11-14T14:00:00Z\",\n  \"start_local\": \"2027-11-14T08:00\",\n"
+                  "  \"schedule\": \"Sunday Service\"\n}")
+        shown = ui.label(sample)
+        shown.setFont(ui.fixed_font(9))
+        shown.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.add_step("How it works", "Tell another service about each new stream", [
+            ui.rich("For a website this app has no guide for (Squarespace, Webflow, a site of your own ...), or "
+                    "for anything else that should happen when a stream is scheduled. Each time a schedule's "
+                    "YouTube stream is created, the app sends its details to a web address you give it. A "
+                    "service at that address does the rest."),
+            steps("In an automation service, make a step that <b>receives a webhook</b>: in "
+                  f"{link('https://zapier.com', 'Zapier')} choose <b>Webhooks by Zapier → Catch Hook</b>; in "
+                  f"{link('https://www.make.com', 'Make')} choose <b>Webhooks → Custom webhook</b>.",
+                  "The service shows a <b>web address</b> for it. Copy it for the next step.",
+                  "After the test in the next step, the service knows the fields below and you can use them in "
+                  "its following steps, for example to update a page or post a message."),
+            ui.label("WHAT IS SENT (as JSON, by POST)", "caps"), shown,
+            ui.callout("The address is kept like a password",
+                       f"Anyone who knows the address can send to it, so it is saved in {vault.where()}, not in "
+                       "the settings file. Only addresses that start with https:// are accepted.")])
+
+        self.name = QLineEdit("Webhook")
+        self.url = secret_field("https://hooks.example.com/...")
+        self.test_button = ui.button("Send a test", "primary", self.test)
+        self.test_state = ui.label("", "sub", wrap=True)
+        self.add_step("Connect", "Paste the web address", [
+            field_grid([("Name in this app", self.name), ("Web address", self.url)]),
+            action_row(self.test_button, self.test_state),
+            ui.rich("The test sends the same fields with <b>\"event\": \"test\"</b> and made-up values, so the "
+                    "service can learn them. Real streams send <b>\"event\": \"stream.scheduled\"</b>."),
+            ui.callout("The schedule must also send to YouTube",
+                       "The web address is told about the YouTube stream of a schedule, after it was created. "
+                       "Tick both the YouTube channel and this address in the schedule.")],
+            check=self.check)
+        self.ready()
+
+    def check(self):
+        try:
+            webhook.address(self.url.text())
+        except net.ApiError as exc:
+            return str(exc)
+        return self.vault.available()
+
+    def test(self):
+        self.error.setText(self.check())
+        if self.error.text():
+            return
+        url = self.url.text()
+        self.test_button.setEnabled(False)
+        self.test_state.setText("Sending ...")
+        from datetime import datetime, timezone
+        now = datetime.now()
+        data = webhook.payload("Sunday Service - test", "A test from Stream Scheduler.",
+                               "https://www.youtube.com/watch?v=test", now.astimezone(timezone.utc), now, "Test", True)
+
+        def done(_, error):
+            self.test_button.setEnabled(True)
+            self.test_state.setText("" if error else "✓  Sent. Look for it in the service.")
+            self.error.setText(str(error) if error else "")
+        ui.run_async(lambda: webhook.send(url, data), done)
+
+    def finish(self):
+        dest = {"id": new_id(), "kind": "webhook", "name": self.name.text().strip() or "Webhook",
+                "account_id": "", "options": {}}
+        try:
+            self.vault.set(dest["id"], "url", self.url.text().strip())
+        except VaultError as exc:
+            return str(exc)
+        self.url.clear()
+        self.store.destinations.append(dest)
+        self.store.save()
+        self.destination = dest
+        return ""
+
+
+# ---- ways to be told -----------------------------------------------------------------------
+
+class NotifyWizard(Wizard):
+    """A guide that sets up one way to be told. A subclass says which (`channel`), builds its steps, and
+    gives what was typed: secrets() for the keychain, config() for the settings file, problem()."""
+    channel = ""
+
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, f"Set up {notify.CHANNELS[self.channel]}", self.channel)
+        self.store, self.vault = store, vault
+        self.old = dict(notify.settings(store)["channels"].get(self.channel, {}))
+        self.test_button = ui.button("Send a test message", "primary", self.test)
+        self.test_state = ui.label("", "sub", wrap=True)
+
+    def test_row(self):
+        return action_row(self.test_button, self.test_state)
+
+    def secrets(self):
+        raise NotImplementedError
+
+    def config(self):
+        return {}
+
+    def problem(self):
+        return ""
+
+    def check(self):
+        return self.problem() or self.vault.available()
+
+    def test(self):
+        self.error.setText(self.problem())
+        if self.error.text():
+            return
+        once = MemoryVault()   # the test uses what is typed; nothing is saved before Finish
+        for name, value in self.secrets().items():
+            once.set(NOTIFY, name, value)
+        config = self.config()
+        self.test_button.setEnabled(False)
+        self.test_state.setText("Sending ...")
+
+        def done(_, error):
+            self.test_button.setEnabled(True)
+            self.test_state.setText("" if error else "✓  Sent. Check that it arrived, then click Finish.")
+            self.error.setText(str(error) if error else "")
+        ui.run_async(lambda: notify.send_one(
+            self.channel, config, once, "Test from Stream Scheduler",
+            "This is how you will be told when a stream needs you."), done)
+
+    def finish(self):
+        try:
+            for name, value in self.secrets().items():
+                self.vault.set(NOTIFY, name, value)
+        except VaultError as exc:
+            return str(exc)
+        notify.settings(self.store)["channels"][self.channel] = {**self.config(), "on": True}
+        self.store.save()
+        return ""
+
+
+class DiscordWizard(NotifyWizard):
+    channel = "discord"
+
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, store, vault)
+        self.add_step("Make a webhook", "Make a webhook in Discord", [
+            ui.rich("Messages arrive in a channel of your Discord server, from a sender called a "
+                    "<b>webhook</b>. You need the permission <b>Manage Webhooks</b> on the server."),
+            steps("In Discord, open the server and click its name, then <b>Server Settings</b>.",
+                  "Open <b>Integrations</b>, then <b>Webhooks</b>, and click <b>New Webhook</b>.",
+                  "Click the new webhook. Name it <b>Stream Scheduler</b> and choose the <b>channel</b> the "
+                  "messages should go to (a private channel for the tech team is a good choice).",
+                  "Click <b>Copy Webhook URL</b>."),
+            ui.callout("Treat the address like a password",
+                       f"Anyone who has it can post in that channel. It is saved in {vault.where()}, not in a "
+                       "file. If it leaks, delete the webhook in Discord and make a new one.")])
+        self.url = secret_field("https://discord.com/api/webhooks/...")
+        self.add_step("Connect", "Paste the webhook address", [self.url, self.test_row()], check=self.check)
+        self.ready()
+
+    def secrets(self):
+        return {"discord_url": self.url.text().strip()}
+
+    def problem(self):
+        text = self.url.text().strip()
+        return "" if text.startswith("https://") and "/api/webhooks/" in text else \
+            "Paste the address from Copy Webhook URL. It starts with https://discord.com/api/webhooks/"
+
+
+class SlackWizard(NotifyWizard):
+    channel = "slack"
+
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, store, vault)
+        self.add_step("Make a webhook", "Make an incoming webhook in Slack", [
+            ui.rich("Messages arrive in a channel of your Slack workspace. Slack asks you to make a small "
+                    "<b>app</b> of your own that is allowed to post there. It is free and takes a few minutes."),
+            steps(f"Open {link('https://api.slack.com/apps')} and click <b>Create New App</b>, then <b>From "
+                  "scratch</b>.",
+                  "Name it <b>Stream Scheduler</b>, choose your workspace, and click <b>Create App</b>.",
+                  "At the left, open <b>Incoming Webhooks</b> and switch <b>Activate Incoming Webhooks</b> on.",
+                  "Click <b>Add New Webhook to Workspace</b>, choose the <b>channel</b> for the messages, and "
+                  "click <b>Allow</b>.",
+                  "Copy the <b>Webhook URL</b> that now shows in the list."),
+            ui.callout("Not allowed to install apps?", "Some workspaces let only their admins add apps. Ask "
+                       "an admin to do these steps, or to approve the app when Slack asks.", "warn", "warn"),
+            ui.callout("Treat the address like a password",
+                       f"Anyone who has it can post in that channel. It is saved in {vault.where()}, not in a "
+                       "file. If it leaks, remove the webhook on the same Slack page.")])
+        self.url = secret_field("https://hooks.slack.com/services/...")
+        self.add_step("Connect", "Paste the webhook address", [self.url, self.test_row()], check=self.check)
+        self.ready()
+
+    def secrets(self):
+        return {"slack_url": self.url.text().strip()}
+
+    def problem(self):
+        return "" if self.url.text().strip().startswith("https://hooks.slack.com/") else \
+            "Paste the Webhook URL. It starts with https://hooks.slack.com/"
+
+
+class PushoverWizard(NotifyWizard):
+    channel = "pushover"
+
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, store, vault)
+        self.add_step("Get Pushover", "Get Pushover on your phone", [
+            ui.rich("Pushover sends notifications to your phone, with a sound, also when the phone is locked. "
+                    "A stream that failed arrives as a <b>high-priority</b> notification."),
+            steps(f"Create an account at {link('https://pushover.net/signup')}.",
+                  "Install the <b>Pushover</b> app on your phone (iPhone or Android) and log in. After a free "
+                  "trial, Pushover asks for a small one-time payment per kind of phone.",
+                  f"Open {link('https://pushover.net')} in a browser. Your <b>User Key</b> is at the top right "
+                  "of the page. You paste it in step 3."),
+            ui.callout("More than one person?",
+                       "In Pushover, make a <b>Delivery Group</b> with everyone's user keys, and paste the "
+                       "group's key instead of your own. Then all of them are told.")])
+        self.add_step("Make a token", "Make an API token for the app", [
+            steps(f"Open {link('https://pushover.net/apps/build')}.",
+                  "Name: <b>Stream Scheduler</b>. The other boxes can stay empty. Tick the agreement and click "
+                  "<b>Create Application</b>.",
+                  "Copy the <b>API Token/Key</b> the next page shows."),
+            ui.callout("Two keys, both kept safe",
+                       f"The user key says who is told; the API token says who is telling. Both are saved in "
+                       f"{vault.where()}, not in a file.")])
+        self.user = secret_field("User Key (or a Delivery Group's key), 30 letters and digits")
+        self.token = secret_field("API Token/Key, 30 letters and digits")
+        self.add_step("Connect", "Paste the two keys", [
+            field_grid([("User key", self.user), ("API token", self.token)]), self.test_row()], check=self.check)
+        self.ready()
+
+    def secrets(self):
+        return {"pushover_user": self.user.text().strip(), "pushover_token": self.token.text().strip()}
+
+    def problem(self):
+        good = lambda t: len(t) == 30 and t.isalnum()
+        return "" if good(self.user.text().strip()) and good(self.token.text().strip()) else \
+            "Each key is 30 letters and digits. Paste the User Key and the API Token/Key."
+
+
+class EmailWizard(NotifyWizard):
+    channel = "email"
+    # provider -> (server, port, security)
+    PROVIDERS = [("Gmail", "smtp.gmail.com", 587, "starttls"), ("Yahoo Mail", "smtp.mail.yahoo.com", 465, "ssl"),
+                 ("iCloud Mail", "smtp.mail.me.com", 587, "starttls"), ("Another provider", "", 587, "starttls")]
+
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, store, vault)
+        self.add_step("What you need", "Send email from an address of yours", [
+            ui.rich("The app sends its messages itself, from this computer, through the mail server of an "
+                    "email address you choose. For that it needs that address's <b>outgoing mail server "
+                    "(SMTP)</b> and a password."),
+            ui.rich("Most providers do not accept your normal password here. They give you an <b>app "
+                    "password</b>: a separate password for one program, which you can cancel at any time."),
+            steps(f"<b>Gmail</b>: switch on 2-Step Verification, then make an app password at "
+                  f"{link('https://myaccount.google.com/apppasswords')} (name it Stream Scheduler).",
+                  f"<b>Yahoo Mail</b>: {link('https://login.yahoo.com/account/security')} → <b>Generate app "
+                  "password</b>.",
+                  f"<b>iCloud Mail</b>: {link('https://account.apple.com')} → <b>Sign-In and Security → "
+                  "App-Specific Passwords</b>.",
+                  "<b>Another provider or your own mail server</b>: look for its <b>SMTP</b> settings (server, "
+                  "port, and whether it uses SSL or STARTTLS). Outlook.com and Microsoft 365 often refuse this "
+                  "kind of sign-in; use another address if they do."),
+            ui.callout("A separate address is a good idea",
+                       "For example a free mailbox made for this, sending to the people who need to know. The "
+                       f"password is saved in {vault.where()}, not in a file, and the connection to the mail "
+                       "server is always encrypted.")])
+        self.provider = QComboBox()
+        for name, *_ in self.PROVIDERS:
+            self.provider.addItem(name)
+        self.host = QLineEdit(self.old.get("host", ""))
+        self.host.setPlaceholderText("smtp.example.org")
+        self.port = QLineEdit(str(self.old.get("port", 587)))
+        self.port.setFixedWidth(90)
+        self.security = QComboBox()
+        for key, text in (("starttls", "STARTTLS (port 587)"), ("ssl", "SSL/TLS (port 465)")):
+            self.security.addItem(text, key)
+        self.security.setCurrentIndex(max(0, self.security.findData(self.old.get("security", "starttls"))))
+        self.user = QLineEdit(self.old.get("user", ""))
+        self.user.setPlaceholderText("The address the messages come from, e.g. streams@example.org")
+        self.password = secret_field("App password")
+        self.to = QLineEdit(self.old.get("to", ""))
+        self.to.setPlaceholderText("Who is told. Several addresses: separate them with commas.")
+        known = next((i for i, p in enumerate(self.PROVIDERS) if p[1] == self.old.get("host")), None)
+        self.provider.setCurrentIndex(known if known is not None else (len(self.PROVIDERS) - 1 if self.old else 0))
+        self.provider.currentIndexChanged.connect(self.preset)
+        if not self.old:
+            self.preset(0)
+        self.add_step("Connect", "Fill in the mail settings", [
+            field_grid([("Provider", self.provider), ("Mail server", self.host), ("Port", self.port),
+                        ("Encryption", self.security), ("Email address", self.user), ("Password", self.password),
+                        ("Send to", self.to)]),
+            self.test_row()], check=self.check)
+        self.ready()
+
+    def preset(self, index):
+        _, host, port, security = self.PROVIDERS[index]
+        if host:
+            self.host.setText(host)
+            self.port.setText(str(port))
+            self.security.setCurrentIndex(self.security.findData(security))
+
+    def secrets(self):
+        return {"email_password": self.password.text().strip()}
+
+    def config(self):
+        return {"host": self.host.text().strip(), "port": int(self.port.text().strip() or 0),
+                "security": self.security.currentData(), "user": self.user.text().strip(),
+                "sender": self.user.text().strip(), "to": self.to.text().strip()}
+
+    def problem(self):
+        if not self.host.text().strip() or not self.port.text().strip().isdigit():
+            return "Fill in the mail server and its port."
+        if "@" not in self.user.text() or not self.password.text().strip():
+            return "Fill in the email address and its password."
+        if "@" not in self.to.text():
+            return "Fill in who the messages are sent to."
+        return ""
+
+
+NOTIFY_WIZARDS = {"email": EmailWizard, "discord": DiscordWizard, "slack": SlackWizard, "pushover": PushoverWizard}

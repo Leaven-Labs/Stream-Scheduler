@@ -11,7 +11,7 @@ import sys
 
 APP_NAME = "Stream Scheduler"
 APP_SLUG = "stream-scheduler"
-VERSION = "0.0.4-alpha"
+VERSION = "0.0.5-alpha"
 
 
 def program_dir():

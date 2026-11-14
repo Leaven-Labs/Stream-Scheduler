@@ -70,7 +70,9 @@ def run_once():
     if held is None:
         print("Stream Scheduler is already running; it does this work itself.")
         return 0
-    entries = engine.run_due(Store(), Vault())
+    import notify
+    store, vault = Store(), Vault()
+    entries = notify.after(store, vault, engine.run_due(store, vault))
     for e in entries:
         print(f"{e['status']:8} {e['kind']:9} {e['when']}  {e['title']}  {e['note']}")
     if not entries:
@@ -85,11 +87,12 @@ def uitest():
         os.environ["STREAM_SCHEDULER_DATA_DIR"] = folder
         import demo
         import ui
-        from dialogs import OverrideDialog, ScheduleDialog, YouTubeOptionsDialog
+        from dialogs import OverrideDialog, PreviewDialog, ScheduleDialog, YouTubeOptionsDialog
         from mainwindow import MainWindow
         from store import Store
         from vault import MemoryVault
-        from wizards import FacebookWizard, WixWizard, YouTubeWizard
+        from wizards import (NOTIFY_WIZARDS, FacebookWizard, WebhookWizard, WixWizard, WordPressWizard,
+                             YouTubeWizard)
         import engine
         for theme in ("light", "dark"):
             store, vault = Store(), MemoryVault()
@@ -105,9 +108,12 @@ def uitest():
                 window.grab()
             made = [ScheduleDialog(window, store), ScheduleDialog(window, store, store.schedules[0]),
                     OverrideDialog(window, store, engine.upcoming(store)[0]),
-                    YouTubeOptionsDialog(window, store.destinations[0])]
-            for wizard in (YouTubeWizard(window, store, vault), FacebookWizard(window, store, vault),
-                           WixWizard(window, store, vault)):
+                    YouTubeOptionsDialog(window, store.destinations[0]),
+                    PreviewDialog(window, store, store.schedules[0])]
+            for wizard in [YouTubeWizard(window, store, vault), FacebookWizard(window, store, vault),
+                           WixWizard(window, store, vault), WordPressWizard(window, store, vault),
+                           WebhookWizard(window, store, vault)] + [w(window, store, vault)
+                                                                   for w in NOTIFY_WIZARDS.values()]:
                 for i in range(len(wizard.checks)):
                     wizard.go(i)
                     wizard.grab()

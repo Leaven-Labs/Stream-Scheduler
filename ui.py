@@ -245,6 +245,17 @@ def callout(title, html, kind="", icon="shield"):
     return box
 
 
+def toggle_row(switch, text):
+    """A switch with its words at the right, as one widget."""
+    box = QWidget()
+    row = QHBoxLayout(box)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(10)
+    row.addWidget(switch)
+    row.addWidget(label(text, "strong"), 1)
+    return box
+
+
 def ask(parent, title, text):
     return QMessageBox.question(parent, title, text) == QMessageBox.Yes
 
@@ -417,6 +428,46 @@ def draw_icon(p, name, rect, color):
         p.drawLine(QPointF(2.5, 8.5), QPointF(21.5, 8.5))
         p.setBrush(col)
         p.drawPolygon([QPointF(10.2, 11.4), QPointF(14.6, 14.2), QPointF(10.2, 17)])
+    elif name in ("alerts", "pushover"):  # a bell
+        path = QPainterPath(QPointF(5, 17))
+        path.cubicTo(7, 15, 6.5, 12, 6.5, 10.5)
+        path.cubicTo(6.5, 6.8, 8.9, 4.5, 12, 4.5)
+        path.cubicTo(15.1, 4.5, 17.5, 6.8, 17.5, 10.5)
+        path.cubicTo(17.5, 12, 17, 15, 19, 17)
+        path.closeSubpath()
+        p.drawPath(path)
+        p.drawArc(QRectF(10, 17.4, 4, 3.4), 180 * 16, 180 * 16)
+        p.drawLine(QPointF(12, 3), QPointF(12, 4.5))
+    elif name == "email":  # an envelope
+        p.drawRoundedRect(QRectF(3, 5.5, 18, 13), 2.5, 2.5)
+        p.drawPolyline([QPointF(3.6, 7), QPointF(12, 13), QPointF(20.4, 7)])
+    elif name in ("discord", "slack"):  # a speech bubble
+        path = QPainterPath(QPointF(6.5, 4.5))
+        path.lineTo(17.5, 4.5)
+        path.cubicTo(19.4, 4.5, 20.5, 5.6, 20.5, 7.5)
+        path.lineTo(20.5, 13)
+        path.cubicTo(20.5, 14.9, 19.4, 16, 17.5, 16)
+        path.lineTo(11, 16)
+        path.lineTo(7, 19.8)
+        path.lineTo(7, 16)
+        path.lineTo(6.5, 16)
+        path.cubicTo(4.6, 16, 3.5, 14.9, 3.5, 13)
+        path.lineTo(3.5, 7.5)
+        path.cubicTo(3.5, 5.6, 4.6, 4.5, 6.5, 4.5)
+        p.drawPath(path)
+        p.setBrush(col)
+        for x in (8.5, 12, 15.5):
+            p.drawEllipse(QPointF(x, 10.3), 0.9, 0.9)
+    elif name == "wordpress":  # a page with a video on it
+        p.drawRoundedRect(QRectF(4.5, 2.5, 15, 19), 2.5, 2.5)
+        p.drawLine(QPointF(8, 6.5), QPointF(16, 6.5))
+        p.drawRoundedRect(QRectF(7.5, 10, 9, 7), 1.5, 1.5)
+        p.setBrush(col)
+        p.drawPolygon([QPointF(11, 11.9), QPointF(13.8, 13.5), QPointF(11, 15.1)])
+    elif name == "webhook":  # two links of a chain
+        p.drawArc(QRectF(3, 8, 10, 8), 60 * 16, 240 * 16)
+        p.drawArc(QRectF(11, 8, 10, 8), 240 * 16, 240 * 16)
+        p.drawLine(QPointF(9, 12), QPointF(15, 12))
     elif name == "youtube":
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(colors["youtube"]))
@@ -449,7 +500,8 @@ class Icon(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        color = "accent" if self.name == "wix" and self.color == "sub" else self.color
+        tinted = ("wix", "wordpress", "webhook", "email", "discord", "slack", "pushover")
+        color = "accent" if self.name in tinted and self.color == "sub" else self.color
         draw_icon(p, self.name, QRectF(0, 0, self.width(), self.height()), colors[color])
         p.end()
 
