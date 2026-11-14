@@ -214,6 +214,10 @@ class YouTubeWizard(Wizard):
                   "<b>Get started</b>.",
                   "App name: <b>Stream Scheduler</b>. Support email: your own address.",
                   "Audience: <b>External</b>. Enter your email as the contact, agree, and <b>Create</b>.",
+                  "If you open the <b>Branding</b> page: only the app name and the two email addresses are needed. "
+                  "Leave the logo, the home page, privacy policy and terms links, and the authorized domains "
+                  "<b>empty</b>. A logo or links would make Google ask for a verification review, which your own "
+                  "use does not need.",
                   "Open <b>Audience</b> at the left and click <b>Publish app</b>, so the status reads "
                   "<b>In production</b>."),
             ui.callout("Do not skip 'Publish app'",
