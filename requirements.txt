@@ -1,0 +1,7 @@
+# What the program needs, each at one exact version.
+#   PySide6-Essentials  the windows (Qt)
+#   keyring             the system keychain, where tokens and client secrets are kept
+#   truststore          HTTPS checked against the system's own trusted certificates
+PySide6-Essentials==6.12.0
+keyring==25.7.0
+truststore==0.10.4
