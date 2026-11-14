@@ -398,6 +398,10 @@ class FacebookWizard(Wizard):
                   f"Under <b>Permissions</b> add exactly these: {perms}.",
                   "Click <b>Generate Access Token</b>. In the window that opens, choose <b>only the Page</b> you "
                   "want to stream to, and confirm.",
+                  "Check it: type <b>me/accounts</b> in the address line at the top and click <b>Submit</b>. Your "
+                  "Page should be listed. If the list is empty and the Page is managed in a Meta <b>business "
+                  "portfolio</b> (Business Suite), also add the permission <b>business_management</b> and "
+                  "generate the token again.",
                   "Copy the long text in the <b>Access Token</b> box. You paste it in the next step."),
             ui.callout("Only what is needed",
                        "These three permissions let the app see which Pages you manage and create posts (the "
@@ -471,8 +475,9 @@ class FacebookWizard(Wizard):
             self.error.setText(str(error))
             return
         if not pages:
-            self.error.setText("The token gives access to no Page. In step 3, choose your Page when the "
-                               "window asks which Pages the app may use.")
+            self.error.setText("The token gives access to no Page. Go back to step 3: choose your Page when the "
+                               "window asks which Pages the app may use and, if the Page belongs to a business "
+                               "portfolio, also add the permission business_management. Then paste the new token.")
             return
         self.found = pages
         self.page.clear()
