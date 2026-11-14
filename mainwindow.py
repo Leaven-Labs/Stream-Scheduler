@@ -608,7 +608,8 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.check)
         if background:
             self.timer.start(CHECK_EVERY_MS)
-            QTimer.singleShot(1500, self.check)   # catch up on what was missed while the app was closed
+            # on starting: see that what was created is still there, and catch up on what was missed
+            QTimer.singleShot(1500, self.check_all)
         self.show_page(0)
 
     def show_page(self, index):
