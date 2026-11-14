@@ -10,7 +10,7 @@ One entry per secret: service "Stream Scheduler", name "<destination id>:<what>"
 import paths
 
 SERVICE = paths.APP_NAME
-SECRETS = {"youtube": ["client_secret", "refresh_token"], "facebook": ["page_token"]}
+SECRETS = {"youtube": ["client_secret", "refresh_token"], "facebook": ["page_token"], "wix": ["api_key"]}
 
 
 class VaultError(Exception):

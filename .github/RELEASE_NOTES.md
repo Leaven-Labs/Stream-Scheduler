@@ -1,17 +1,16 @@
-The second alpha of Stream Scheduler: it schedules your weekly YouTube and Facebook live streams by
-itself, with the date of each stream in the title.
+The third alpha of Stream Scheduler: it schedules your weekly YouTube live streams by itself, with the
+date of each stream in the title, and shows the coming stream on your Wix website.
 
-> **Alpha.** YouTube scheduling has been confirmed on a real channel. The new Facebook request was
-> confirmed by hand on a real Page, but not yet from inside the app.
+> **Alpha.** YouTube scheduling is confirmed on a real channel. The Wix website update is new and has
+> not yet been tried against a real Wix site.
 
-## New in 0.0.1
+## New in 0.0.2
 
-- **Facebook scheduling fixed.** Facebook refused the old request ("Scheduled Live has been
-  deprecated"). Streams are now created as scheduled events, and History links to the event.
-- **YouTube guide:** separate steps for the sign-in screen, the Branding page (what Google needs before
-  the app can be published) and publishing.
-- **Facebook guide:** Next on the Connect step looks for your Pages; help for when the token lists no
-  Page (choose the Page, or add `business_management` for a Page in a business portfolio).
+- **Wix websites.** After a schedule creates its YouTube stream, the app points the video player on a
+  page of your Wix site at it (through a CMS collection the guide helps you set up). Publishing the
+  site afterwards is an option.
+- **Facebook is switched off.** Facebook no longer lets an app schedule a live video with a Page's
+  persistent stream key. Schedules skip a Facebook destination; you can remove it.
 
 Updating: download, unzip and run the new version. Your destinations, schedules and sign-ins are kept.
 
@@ -38,7 +37,7 @@ must be running to save sign-ins.
 - Weekly schedules, created on the platforms a chosen number of days before
 - Titles and descriptions with `{date}`, `{weekday}`, `{month}`, `{day}`, `{year}`, `{time}`
 - Override or skip a single stream
-- YouTube and Facebook Pages, each with a step-by-step setup guide
-- Persistent stream keys (YouTube: a reusable key; Facebook: the Page's persistent key)
+- YouTube and Wix, each with a step-by-step setup guide
+- A persistent YouTube stream key: your encoder keeps the same key every week
 - Sign-ins kept in the system keychain
 - Tray, start at login, catch-up after the computer was off

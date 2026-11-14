@@ -502,3 +502,189 @@ class FacebookWizard(Wizard):
         self.store.save()
         self.destination = dest
         return ""
+
+
+class WixWizard(Wizard):
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, "Connect a Wix website", "wix")
+        self.store, self.vault = store, vault
+        self.found = []
+        self.destination = None
+
+        self.add_step("Before you start", "Show the stream on your Wix website", [
+            ui.rich("After a schedule creates its YouTube stream, Stream Scheduler can put that stream on a page "
+                    "of your Wix site, so the video player there always shows the coming service."),
+            ui.rich("Wix does not let an outside app edit an element on a page. The supported way is Wix's own "
+                    "<b>CMS</b>: a small collection holds the stream's link, the video player on your page is "
+                    "connected to it, and the app only changes the link. You set this up once, in about 15 minutes."),
+            steps("You must be the <b>owner or a co-owner</b> of the Wix site: only they can create API keys.",
+                  "The schedule must also send to a <b>YouTube</b> channel. The website shows that stream.",
+                  "If your page has an embedded YouTube element today, step 3 replaces it with a video player "
+                  "that can be connected to the CMS. It looks the same to visitors."),
+            ui.callout("How this keeps your website safe",
+                       f"The app keeps one API key, in <b>{vault.where()}</b>, encrypted with your login. In step 4 "
+                       "you give the key only the permission to edit collection content, so it cannot change your "
+                       "site's design, pages, members or payments. You can delete the key in Wix at any time.")])
+
+        self.add_step("Make a collection", "Make a collection for the stream", [
+            steps(f"Open your site's dashboard at {link('https://manage.wix.com')} and choose <b>CMS</b> in the menu "
+                  "at the left.",
+                  "Click <b>Create Collection</b>, then <b>Start from scratch</b>. Name it <b>Livestream</b> and "
+                  "create it as a normal (multiple item) collection. Its <b>Collection ID</b> is shown under the "
+                  "name: it should read <b>Livestream</b>.",
+                  "Add a field: click <b>+</b> (Add Field), choose the type <b>URL</b>, and name it <b>Video URL</b>. "
+                  "Open the field's settings and note its <b>Field key</b> (Field ID): it should read "
+                  "<b>videoUrl</b>.",
+                  "The collection already has a <b>Title</b> field. Use it to name the item, for example "
+                  "<b>Sunday stream</b>. The app leaves it alone.",
+                  "Optional: if the page should also show the stream's title, add a <b>Text</b> field named "
+                  "<b>Stream title</b> (field key <b>streamTitle</b>) for the app to write it in.",
+                  "Add <b>one item</b>: Title <b>Sunday stream</b>, Video URL any YouTube link for now. The app "
+                  "replaces both each week.",
+                  "Click <b>More actions → Permissions & privacy</b> and make sure <b>everyone can view</b> the "
+                  "content (the setting for 'Show content')."),
+            ui.callout("Good to know", "What is in a collection is live as soon as it changes. That is why the "
+                       "website shows the new stream without anyone publishing the site.")])
+
+        self.add_step("Connect the player", "Connect the video player on your page", [
+            steps("Open the site in the <b>Wix Editor</b> and go to the page that shows the stream.",
+                  "Click <b>Add Elements → Video & Music</b> and add a <b>single video player</b> of the kind that "
+                  "plays a YouTube link. Put it where the old YouTube element is, at the same size, and delete "
+                  "the old element.",
+                  "Select the new player and click the <b>Connect to CMS</b> icon. Click <b>Create Dataset</b>, "
+                  "choose the <b>Livestream</b> collection and click <b>Create</b>.",
+                  "Under <b>Connections</b>, set <b>Video source connects to</b> (or <b>Video URL connects "
+                  "to</b>) to <b>Video URL</b>.",
+                  "Click <b>Preview</b> to check that the player shows the link from your collection item.",
+                  "Click <b>Publish</b>. This is the only time the site has to be published for this."),
+            ui.callout("Two services, two players?",
+                       "Give the collection one item per service (for example Title <b>8:15 service</b> and "
+                       "<b>10:30 service</b>) and each player its own dataset, filtered to its item (dataset "
+                       "settings → Add filter → Title is ...). Then add this Wix destination once per player, "
+                       "choosing a different item each time, and tick one in each schedule.")])
+
+        self.add_step("Create an API key", "Create an API key", [
+            steps(f"Open {link('https://manage.wix.com/account/api-keys')} (owner or co-owner only).",
+                  "Click <b>Generate API Key</b>. Name it <b>Stream Scheduler</b>.",
+                  "Under <b>Permissions</b>, open <b>All site permissions</b> and tick <b>Wix Data</b>. Leave "
+                  "everything else unticked.",
+                  "Only if you want the app to publish the site as well (see the next step): Wix currently lists "
+                  "the permission <b>Manage SEO Settings</b> for publishing a site.",
+                  "Click <b>Generate Key</b>, confirm with the code Wix emails you, and <b>copy the key</b>. Wix "
+                  "shows it only once.",
+                  "Find the <b>Site ID</b>: open your site's dashboard and look at the address. In "
+                  "<b>manage.wix.com/dashboard/<u>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</u>/home</b> the underlined "
+                  "part is the Site ID."),
+            ui.callout("Treat the API key like a password",
+                       f"It is saved in {vault.where()}, not in a file. Do not email it or put it in a shared "
+                       "document. If it ever leaks, delete it on the API keys page and make a new one.")])
+
+        self.api_key = secret_field("API key")
+        self.site_id = QLineEdit()
+        self.site_id.setPlaceholderText("Site ID  (from the dashboard's address)")
+        self.collection = QLineEdit("Livestream")
+        self.url_field = QLineEdit("videoUrl")
+        self.title_field = QLineEdit()
+        self.title_field.setPlaceholderText("Optional, e.g. streamTitle. Empty: the app does not write the title.")
+        self.page_url = QLineEdit()
+        self.page_url.setPlaceholderText("Optional: the page's address, for the Open button (https://...)")
+        self.name = QLineEdit("Website")
+        grid_box = QWidget()
+        grid = QGridLayout(grid_box)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
+        rows = [("Name in this app", self.name), ("API key", self.api_key), ("Site ID", self.site_id),
+                ("Collection ID", self.collection), ("Field key of the video link", self.url_field),
+                ("Field key for the stream's title", self.title_field), ("Page", self.page_url)]
+        for i, (text, widget) in enumerate(rows):
+            grid.addWidget(ui.label(text, "strong"), i, 0)
+            grid.addWidget(widget, i, 1)
+        self.find_button = ui.button("Find my collection", "primary", self.find_items)
+        self.find_state = ui.label("", "sub", wrap=True)
+        find_row = QWidget()
+        r = QHBoxLayout(find_row)
+        r.setContentsMargins(0, 0, 0, 0)
+        r.addWidget(self.find_button)
+        r.addWidget(self.find_state, 1)
+        self.item = QComboBox()
+        self.item.setEnabled(False)
+        self.item.addItem("The collection's items appear here")
+        self.publish = ui.Switch(False)
+        publish_row = QWidget()
+        r = QHBoxLayout(publish_row)
+        r.setContentsMargins(0, 0, 0, 0)
+        r.setSpacing(10)
+        r.addWidget(self.publish)
+        r.addWidget(ui.label("Also publish the site after each update", "strong"), 1)
+        self.add_step("Connect", "Connect the website", [
+            grid_box, find_row, self.item, publish_row,
+            ui.callout("Publishing is usually not needed, and it publishes everything",
+                       "The new stream shows on the website without publishing. If you switch this on, Wix "
+                       "publishes <b>every change saved in the editor</b>, including a half-finished edit someone "
+                       "else left there. Leave it off unless your page does not update without it.", "warn", "warn")],
+            check=self.check_items)
+        self.ready()
+
+    def values(self):
+        return {"collection": self.collection.text().strip(), "url_field": self.url_field.text().strip(),
+                "title_field": self.title_field.text().strip(), "page_url": self.page_url.text().strip(),
+                "publish": self.publish.isChecked()}
+
+    def check_items(self):
+        if self.found:
+            return ""
+        if self.find_button.isEnabled():
+            self.find_items()
+        return self.error.text() or "Looking for your collection ... choose the item when it appears, then click Finish."
+
+    def find_items(self):
+        self.error.setText("")
+        key, site, v = self.api_key.text().strip(), self.site_id.text().strip(), self.values()
+        if len(key) < 20 or len(site) < 20 or not v["collection"] or not v["url_field"]:
+            self.error.setText("Fill in the API key, the Site ID, the collection ID and the field key of the video link.")
+            return
+        problem = self.vault.available()
+        if problem:
+            self.error.setText(problem)
+            return
+        self.find_button.setEnabled(False)
+        self.find_state.setText("Asking Wix ...")
+        import wix
+        ui.run_async(lambda: wix.items(key, site, v["collection"]), self.items_found)
+
+    def items_found(self, items, error):
+        self.find_button.setEnabled(True)
+        self.find_state.setText("")
+        if error:
+            self.error.setText(str(error))
+            return
+        if not items:
+            self.error.setText("The collection has no items. Add one item to it in the Wix CMS (step 2), then try again.")
+            return
+        self.found = items
+        self.item.clear()
+        for i in items:
+            self.item.addItem(str(i["data"].get("title") or i["id"]), i["id"])
+        self.item.setEnabled(True)
+        known = set().union(*(i["data"].keys() for i in items))
+        v = self.values()
+        missing = [f for f in (v["url_field"], v["title_field"]) if f and f not in known]
+        self.find_state.setText(
+            f"✓  Found {len(items)} item{'s' if len(items) != 1 else ''}. Choose one below, then click Finish."
+            + (f"  Note: no item has a value in “{missing[0]}” yet; check that field key." if missing else ""))
+
+    def finish(self):
+        dest = {"id": new_id(), "kind": "wix", "name": self.name.text().strip() or "Website",
+                "account_id": self.site_id.text().strip(),
+                "options": {**self.values(), "item_id": self.item.currentData(),
+                            "item_title": self.item.currentText()}}
+        try:
+            self.vault.set(dest["id"], "api_key", self.api_key.text().strip())
+        except VaultError as exc:
+            return str(exc)
+        self.api_key.clear()
+        self.store.destinations.append(dest)
+        self.store.save()
+        self.destination = dest
+        return ""

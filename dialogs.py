@@ -5,13 +5,14 @@ from PySide6.QtCore import Qt, QTime
 from PySide6.QtWidgets import (QComboBox, QDialog, QGridLayout, QHBoxLayout, QLineEdit, QPlainTextEdit, QSpinBox,
                                QTimeEdit, QVBoxLayout, QWidget)
 
+import engine
 import recurrence
 import titles
 import ui
 from store import new_id
 from wizards import YouTubeOptions
 
-KIND_NAMES = {"youtube": "YouTube", "facebook": "Facebook"}
+KIND_NAMES = {"youtube": "YouTube", "facebook": "Facebook", "wix": "Website"}
 
 
 def time_edit(text, clock):
@@ -61,7 +62,7 @@ class ScheduleDialog(QDialog):
         self.schedule = dict(schedule) if schedule else {
             "id": new_id(), "name": "", "enabled": True, "weekdays": [6], "time": "08:00", "lead_days": 1,
             "create_time": "09:00", "title": "Sunday Service - {date}", "description": "", "date_format": "long",
-            "destinations": [d["id"] for d in store.destinations], "overrides": {}}
+            "destinations": [d["id"] for d in store.destinations if d["kind"] in engine.ENABLED], "overrides": {}}
         s = self.schedule
         self.setWindowTitle("Edit schedule" if schedule else "New schedule")
         self.resize(720, 700)
@@ -112,12 +113,14 @@ class ScheduleDialog(QDialog):
         dest_row = QHBoxLayout()
         dest_row.setSpacing(6)
         for d in store.destinations:
+            if d["kind"] not in engine.ENABLED:
+                continue
             b = ui.button(f"{KIND_NAMES[d['kind']]} · {d['name']}", "pick")
             b.setCheckable(True)
             b.setChecked(d["id"] in s["destinations"])
             dest_row.addWidget(b)
             self.dests[d["id"]] = b
-        if not store.destinations:
+        if not self.dests:
             dest_row.addWidget(ui.label("None connected yet. You can save the schedule and add them on the "
                                         "Destinations page.", "sub", wrap=True), 1)
         else:

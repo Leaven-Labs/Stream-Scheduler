@@ -407,6 +407,11 @@ def draw_icon(p, name, rect, color):
         p.drawLine(QPointF(12, 10), QPointF(12, 14))
         p.setBrush(col)
         p.drawEllipse(QPointF(12, 16.8), 0.6, 0.6)
+    elif name == "wix":  # a browser window that plays
+        p.drawRoundedRect(QRectF(2.5, 4, 19, 16), 3, 3)
+        p.drawLine(QPointF(2.5, 8.5), QPointF(21.5, 8.5))
+        p.setBrush(col)
+        p.drawPolygon([QPointF(10.2, 11.4), QPointF(14.6, 14.2), QPointF(10.2, 17)])
     elif name == "youtube":
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(colors["youtube"]))
@@ -439,7 +444,8 @@ class Icon(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        draw_icon(p, self.name, QRectF(0, 0, self.width(), self.height()), colors[self.color])
+        color = "accent" if self.name == "wix" and self.color == "sub" else self.color
+        draw_icon(p, self.name, QRectF(0, 0, self.width(), self.height()), colors[color])
         p.end()
 
 

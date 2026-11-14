@@ -56,15 +56,18 @@ def _error(status, payload):
         reason = errors[0].get("reason") or str(err.get("status") or err.get("code") or "")
     elif isinstance(err, str):  # OAuth token answers
         reason, message = err, payload.get("error_description") or err
+    elif isinstance(payload, dict) and isinstance(payload.get("message"), str):  # Wix
+        message = payload["message"]
+        reason = str((payload.get("details") or {}).get("applicationError", {}).get("code", ""))
     return ApiError(message or f"The server answered with error {status}.", status, reason)
 
 
-def request(method, url, params=None, form=None, body=None, token=None, timeout=30):
-    """Ask and return the JSON answer. `token` goes in the Authorization header, `form` and `body`
-    (JSON) in the request, never in the address."""
+def request(method, url, params=None, form=None, body=None, token=None, timeout=30, headers=None):
+    """Ask and return the JSON answer. `token` goes in the Authorization header (as a Bearer token),
+    `form` and `body` (JSON) in the request, never in the address. `headers` adds or replaces headers."""
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-    headers = {"Accept": "application/json", "User-Agent": f"StreamScheduler/{paths.VERSION}"}
+    headers = {"Accept": "application/json", "User-Agent": f"StreamScheduler/{paths.VERSION}", **(headers or {})}
     data = None
     if token:
         headers["Authorization"] = f"Bearer {token}"
