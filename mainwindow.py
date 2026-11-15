@@ -24,7 +24,7 @@ import titles
 import ui
 import updates
 import vault as vault_module
-from dialogs import KIND_NAMES, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog, time_edit
+from dialogs import KIND_NAMES, AboutDialog, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog, time_edit
 from wizards import NOTIFY_WIZARDS, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
 
 CHECK_EVERY_MS = 60_000
@@ -755,6 +755,10 @@ class SettingsPage(Page):
             ("Backup", "One file with your schedules, destinations, history and settings, to keep or to move to "
              "another computer. Sign-ins and thumbnail pictures are not in it.", backup),
             ("Sign-ins", f"Kept in {self.vault.where()}. Remove a destination to delete its sign-in.", None)])
+        self.section("About", [
+            (f"{paths.APP_NAME} {paths.VERSION}", f"{paths.COPYRIGHT}. Published by {paths.PUBLISHER}. "
+             "Free software under the MIT License.",
+             ui.button("About ...", clicked=lambda: AboutDialog(self).exec()))])
         self.col.addWidget(ui.callout(
             "The computer must be on", "Streams are created by this computer at the time you chose. If it is "
             "asleep or off at that time, the app creates them as soon as it runs again, as long as the stream is "

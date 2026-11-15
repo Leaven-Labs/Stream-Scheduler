@@ -87,7 +87,7 @@ def uitest():
         os.environ["STREAM_SCHEDULER_DATA_DIR"] = folder
         import demo
         import ui
-        from dialogs import OverrideDialog, PreviewDialog, ScheduleDialog, YouTubeOptionsDialog
+        from dialogs import AboutDialog, OverrideDialog, PreviewDialog, ScheduleDialog, YouTubeOptionsDialog
         from mainwindow import MainWindow
         from store import Store
         from vault import MemoryVault
@@ -109,7 +109,7 @@ def uitest():
             made = [ScheduleDialog(window, store), ScheduleDialog(window, store, store.schedules[0]),
                     OverrideDialog(window, store, engine.upcoming(store)[0]),
                     YouTubeOptionsDialog(window, store.destinations[0]),
-                    PreviewDialog(window, store, store.schedules[0])]
+                    PreviewDialog(window, store, store.schedules[0]), AboutDialog(window)]
             for wizard in [YouTubeWizard(window, store, vault), FacebookWizard(window, store, vault),
                            WixWizard(window, store, vault), WordPressWizard(window, store, vault),
                            WebhookWizard(window, store, vault)] + [w(window, store, vault)
