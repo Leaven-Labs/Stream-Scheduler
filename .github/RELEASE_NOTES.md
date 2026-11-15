@@ -1,9 +1,17 @@
-The sixth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
+The seventh alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
 of each stream in the title, shows the coming stream on your website, and tells you when one needs you.
 
 > **Alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and site.
 > Everything under "New in 0.0.5" that talks to another service passed its automated tests but is
 > **not yet confirmed on real accounts**. Try each one once before relying on it.
+
+## New in 0.0.6
+
+- **A new icon.** The calendar now has two arrows going round its dot, for a stream that comes round
+  by itself. It is in the window, the tray, the taskbar and your applications menu, with a simpler
+  drawing at the small sizes. Nothing else about the app has changed.
+- **Leaven Labs has a home page:** [www.leavenlabs.org](https://www.leavenlabs.org). The About
+  window and the README point there now.
 
 ## New in 0.0.5
 
@@ -28,7 +36,7 @@ of each stream in the title, shows the coming stream on your website, and tells 
 
 Updating: download and run the new version (on Windows, the new Setup). Your destinations, schedules and
 sign-ins are kept. To be safe, copy the settings folder first (`%APPDATA%\Stream Scheduler` on Windows);
-from this version on, **Settings → Save a backup** does that for you.
+since 0.0.5, **Settings → Save a backup** does that for you.
 
 ## Download
 
