@@ -15,7 +15,7 @@ VERSION = "0.0.5-alpha"
 AUTHOR = "Aaron Steger"
 COPYRIGHT = f"Copyright (c) 2026 {AUTHOR}"
 PUBLISHER = "Leaven Labs"
-PUBLISHER_URL = "https://leavenlabs.org/"
+PUBLISHER_URL = "https://www.leavenlabs.org/"
 PROJECT_URL = "https://github.com/Leaven-Labs/Stream-Scheduler"
 LICENSE_URL = PROJECT_URL + "/blob/main/LICENSE"
 
