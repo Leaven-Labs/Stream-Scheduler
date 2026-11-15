@@ -14,7 +14,7 @@ stream already in the title, shows the coming stream on your website, and tells 
 
 - **Schedules that repeat.** "Every Sunday at 8:00 AM, created the Saturday before at 9:00 AM." Choose
   for each schedule which of your destinations it goes to.
-- **Titles that fill in the date.** `Sunday Service - {date}` becomes *Sunday Service - November 15,
+- **Titles that fill in the date.** `Sunday Service - {date}` becomes *Sunday Service - March 7,
   2027* for that Sunday's stream. Also `{weekday}`, `{month}`, `{day}`, `{year}` and `{time}`, in the
   title and the description, with a choice of date formats.
 - **One-time streams and series.** A schedule can be for a single date, such as Christmas Eve, or

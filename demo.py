@@ -1,10 +1,35 @@
 """Made-up data to show the windows without any account: used by `app.py --uitest` and tools/screenshots.py."""
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import engine
 
 
-def fill(store, vault):
+def easter(year):
+    """Easter Sunday of the Western churches (the Gregorian reckoning)."""
+    a, b, c = year % 19, year // 100, year % 100
+    d, e = b // 4, b % 4
+    g = (8 * b + 13) // 25
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    m = (32 + 2 * e + 2 * i - h - k) % 7
+    n = (a + 11 * h + 19 * m) // 433
+    month = (h + m - 7 * n + 90) // 25
+    return date(year, month, (h + m - 7 * n + 33 * month + 19) % 32)
+
+
+def lent_midweeks(today):
+    """The first and last Wednesday evening of the Lent that is running or comes next: the five
+    Wednesdays between Ash Wednesday and Holy Week, which have their own services."""
+    for year in (today.year, today.year + 1):
+        ash_wednesday = easter(year) - timedelta(days=46)
+        first, last = ash_wednesday + timedelta(days=7), ash_wednesday + timedelta(days=35)
+        if today <= last:
+            return first, last
+
+
+def fill(store, vault, now=None):
+    now = now or datetime.now()
+    first_lent, last_lent = lent_midweeks(now.date())
     store.destinations.extend([
         {"id": "demo-yt", "kind": "youtube", "name": "Grace Community Church", "account_id": "UCdemo",
          "client_id": "demo.apps.googleusercontent.com",
@@ -22,15 +47,14 @@ def fill(store, vault):
          "destinations": ["demo-yt", "demo-fb"], "overrides": {}},
         {"id": "demo-s2", "name": "Lent Evening Prayer", "enabled": True, "weekdays": [2], "time": "19:00",
          "lead_days": 2, "create_time": "12:00", "title": "{series}, week {number} | {month} {day}",
-         "series": "Lent", "starts": (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d"),
-         "until": (datetime.now() + timedelta(days=28)).strftime("%Y-%m-%d"), "privacy": "unlisted",
+         "series": "Lent", "starts": first_lent.strftime("%Y-%m-%d"),
+         "until": last_lent.strftime("%Y-%m-%d"), "privacy": "unlisted",
          "description": "", "date_format": "long", "destinations": ["demo-yt"], "overrides": {}}])
     store.data["notify"] = {"channels": {"pushover": {"on": True},
                                          "email": {"on": True, "host": "smtp.example.org", "port": 587,
                                                    "security": "starttls", "user": "streams@example.org",
                                                    "to": "tech-team@example.org"}},
                             "events": {"summary": True}}
-    now = datetime.now()
     items = engine.upcoming(store, now)
     first = next(i for i in items if i["schedule"]["id"] == "demo-s1")
     first["schedule"]["overrides"][items[-1]["date"]] = {"skip": True}
