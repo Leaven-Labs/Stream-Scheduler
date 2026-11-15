@@ -3,11 +3,12 @@
 Nothing here knows about schedules or platforms. The pictures (the app's icon, the menu's icons, the
 platform badges) are drawn in code, so they take the theme's colours and no image files are shipped.
 """
+import math
 import os
 
 from PySide6.QtCore import QObject, QPointF, QRectF, QRunnable, QSize, Qt, QThreadPool, Signal
 from PySide6.QtGui import (QColor, QFont, QFontDatabase, QGuiApplication, QIcon, QLinearGradient, QPainter,
-                           QPainterPath, QPen, QPixmap)
+                           QPainterPath, QPen, QPixmap, QPolygonF)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QFrame, QHBoxLayout, QLabel, QMessageBox,
                                QPushButton, QVBoxLayout, QWidget)
 
@@ -331,7 +332,16 @@ def run_async(fn, done):
 # ---- drawings ------------------------------------------------------------------------------
 
 def draw_app_icon(p, size):
-    """The app's icon (the same picture as assets/icon.svg): a calendar page that goes live."""
+    """The app's icon (the same picture as assets/icon.svg): a calendar page that comes round by itself.
+    At 40 pixels and smaller the lines are thicker, so that the arrows do not blur into a ring."""
+    small = size <= 40
+    line = 20 if small else 14
+    page = QRectF(52, 72, 152, 132) if small else QRectF(56, 70, 144, 130)
+    rule = 112 if small else 108                   # the line under the page's top edge
+    rings = (50, 86) if small else (52, 84)
+    radius, arrow = (27, 14) if small else (26, 9)
+    cy = 158 if small else 154
+    white = QColor("white")
     p.save()
     p.setRenderHint(QPainter.Antialiasing)
     p.scale(size / 256, size / 256)
@@ -342,18 +352,28 @@ def draw_app_icon(p, size):
     p.setBrush(grad)
     p.drawRoundedRect(QRectF(8, 8, 240, 240), 56, 56)
     p.setBrush(Qt.NoBrush)
-    p.setPen(QPen(QColor("white"), 14, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-    p.drawRoundedRect(QRectF(56, 70, 144, 130), 22, 22)
-    p.drawLine(QPointF(56, 108), QPointF(200, 108))
-    p.drawLine(QPointF(96, 52), QPointF(96, 84))
-    p.drawLine(QPointF(160, 52), QPointF(160, 84))
-    p.setPen(QPen(QColor("white"), 9, Qt.SolidLine, Qt.RoundCap))
-    ring = QRectF(128 - 33, 154 - 33, 66, 66)
-    p.drawArc(ring, -40 * 16, 80 * 16)
-    p.drawArc(ring, 140 * 16, 80 * 16)
+    p.setPen(QPen(white, line, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    p.drawRoundedRect(page, 22, 22)
+    p.drawLine(QPointF(page.left(), rule), QPointF(page.right(), rule))
+    for x in (96, 160):
+        p.drawLine(QPointF(x, rings[0]), QPointF(x, rings[1]))
+    circle = QRectF(128 - radius, cy - radius, 2 * radius, 2 * radius)
+    for start, end in ((200, 330), (20, 150)):     # two arrows, in degrees clockwise from 3 o'clock
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(white, arrow, Qt.SolidLine, Qt.RoundCap))
+        p.drawArc(circle, -start * 16, -(end - start) * 16)
+        a = math.radians(end)
+        ex, ey = 128 + radius * math.cos(a), cy + radius * math.sin(a)
+        tx, ty, nx, ny = -math.sin(a), math.cos(a), math.cos(a), math.sin(a)
+        ahead, wide = 1.25 * arrow, 1.05 * arrow
+        p.setBrush(white)
+        p.setPen(QPen(white, 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.drawPolygon(QPolygonF([QPointF(ex + ahead * tx, ey + ahead * ty),
+                                 QPointF(ex + wide * nx, ey + wide * ny),
+                                 QPointF(ex - wide * nx, ey - wide * ny)]))
     p.setPen(Qt.NoPen)
     p.setBrush(QColor("#ff6b81"))
-    p.drawEllipse(QPointF(128, 154), 15, 15)
+    p.drawEllipse(QPointF(128, cy), 9, 9)
     p.restore()
 
 
