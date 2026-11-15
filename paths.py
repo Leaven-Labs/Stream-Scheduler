@@ -12,6 +12,12 @@ import sys
 APP_NAME = "Stream Scheduler"
 APP_SLUG = "stream-scheduler"
 VERSION = "0.0.5-alpha"
+AUTHOR = "Aaron Steger"
+COPYRIGHT = f"Copyright (c) 2026 {AUTHOR}"
+PUBLISHER = "Leaven Labs"
+PUBLISHER_URL = "https://leavenlabs.org/"
+PROJECT_URL = "https://github.com/Leaven-Labs/Stream-Scheduler"
+LICENSE_URL = PROJECT_URL + "/blob/main/LICENSE"
 
 
 def program_dir():

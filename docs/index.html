@@ -3,46 +3,407 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Stream Scheduler</title>
+<title>Stream Scheduler: your weekly live streams, scheduled by themselves</title>
+<meta name="description" content="A free app for Windows, Mac and Linux that schedules your weekly live streams on YouTube by itself, with the date of each stream already in the title, and shows the coming stream on your website.">
+<meta property="og:title" content="Stream Scheduler">
+<meta property="og:description" content="Schedules your weekly live streams on YouTube by itself, with the date already in the title.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://streamscheduler.leavenlabs.org/screenshots/upcoming-light.png">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
-  :root { --bg:#0f1117; --card:#1a1e2b; --text:#eceef5; --sub:#9299ad; --line:#2a2f40; --accent:#8b7cf8; }
-  @media (prefers-color-scheme: light) {
-    :root { --bg:#f5f5fa; --card:#ffffff; --text:#1b1d2a; --sub:#666b80; --line:#e2e2ec; --accent:#5b4be0; } }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:760px; margin:0 auto; padding:56px 20px 72px; }
-  h1 { font-size:34px; margin:18px 0 6px; } h2 { font-size:20px; margin:34px 0 8px; }
-  p.lead { color:var(--sub); font-size:18px; margin-top:0; }
-  a { color:var(--accent); } img.shot { width:100%; border:1px solid var(--line); border-radius:12px; margin-top:22px; }
-  .button { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; font-weight:600;
-            padding:10px 20px; border-radius:8px; margin:10px 10px 0 0; }
-  .button.plain { background:var(--card); color:var(--text); border:1px solid var(--line); }
-  footer { color:var(--sub); font-size:14px; margin-top:44px; border-top:1px solid var(--line); padding-top:16px; }
+  /* The app's own "Twilight" colours (ui.py): deep indigo, a violet accent, a coral dot for "live". */
+  :root {
+    --bg: #f5f5fa; --card: #ffffff; --text: #1b1d2a; --sub: #666b80; --line: #e2e2ec;
+    --accent: #5b4be0; --accent2: #4a3bc9; --soft: #efedfd; --softline: #b3abf3;
+    --live: #f0486a; --ok: #17805a; --okbg: #e1f5ec;
+    --on-accent: #ffffff; --shadow: 0 1px 2px rgba(27, 29, 42, .06), 0 12px 32px rgba(27, 29, 42, .08);
+    /* the download panel is the same in both themes */
+    --panel: #1f1d3a; --panel-line: #4a4391; --panel-text: #eceef5; --panel-sub: #c9cde0;
+    --panel-accent: #8b7cf8; --panel-live: #ff6b81; --panel-ink: #0f1117;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117; --card: #1a1e2b; --text: #eceef5; --sub: #9299ad; --line: #2a2f40;
+      --accent: #8b7cf8; --accent2: #a69bfa; --soft: #1f1d3a; --softline: #4a4391;
+      --live: #ff6b81; --ok: #4fd1a1; --okbg: #12322a;
+      --on-accent: #0f1117; --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  a { color: var(--accent); }
+  a:hover { color: var(--accent2); }
+  :focus-visible { outline: 3px solid var(--live); outline-offset: 3px; border-radius: 6px; }
+  img { max-width: 100%; height: auto; display: block; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* top bar */
+  header.top { padding: 18px 0; }
+  header.top .wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px;
+           color: var(--text); text-decoration: none; margin-right: auto; }
+  .brand img { width: 40px; height: 40px; }
+  nav.links { display: flex; gap: 6px 22px; flex-wrap: wrap; font-size: 16px; }
+  nav.links a { color: var(--sub); text-decoration: none; }
+  nav.links a:hover { color: var(--text); text-decoration: underline; }
+
+  /* hero */
+  .hero { padding-top: 44px; padding-bottom: 20px; text-align: center; }
+  h1 { font-size: clamp(2.1rem, 5.4vw, 3.5rem); line-height: 1.1; letter-spacing: -.025em;
+       margin: 0 auto 18px; max-width: 17ch; text-wrap: balance; }
+  .lead { font-size: clamp(1.05rem, 2vw, 1.25rem); color: var(--sub); max-width: 62ch; margin: 0 auto 28px;
+          text-wrap: pretty; }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 10px;
+         font-weight: 600; text-decoration: none; border: 1px solid var(--line); background: var(--card);
+         color: var(--text); }
+  .btn:hover { color: var(--text); border-color: var(--sub); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn.primary:hover { background: var(--accent2); border-color: var(--accent2); color: var(--on-accent); }
+  .btn svg { width: 20px; height: 20px; flex: none; }
+  .fine { color: var(--sub); font-size: 15px; margin: 16px 0 0; }
+
+  /* one title, every week */
+  .fill { max-width: 760px; margin: 44px auto 0; text-align: left; background: var(--card);
+          border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .fill .cap { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+               color: var(--sub); margin: 0 0 8px; }
+  .fill .tpl { font-size: clamp(1rem, 2.6vw, 1.2rem); font-weight: 600; margin: 0 0 14px; overflow-wrap: anywhere; }
+  .fill .tpl code { background: var(--soft); color: var(--accent); border-radius: 6px; padding: 2px 7px;
+                    font-size: .92em; font-weight: 600; }
+  .fill ol { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .fill li { display: flex; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; padding: 10px 0;
+             border-bottom: 1px solid var(--line); }
+  .fill li:last-child { border-bottom: 0; padding-bottom: 0; }
+  .fill .t { font-weight: 600; margin-right: auto; }
+  .fill .t b { color: var(--accent); font-weight: 600; }
+  .fill .w { color: var(--sub); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .fill .s { font-size: 14px; font-weight: 600; border-radius: 99px; padding: 1px 11px; white-space: nowrap;
+             background: var(--bg); color: var(--sub); border: 1px solid var(--line); }
+  .fill .s.done { background: var(--okbg); color: var(--ok); border-color: transparent; }
+
+  .shot { margin: 40px auto 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--line);
+          box-shadow: var(--shadow); background: var(--card); }
+
+  /* sections */
+  section { padding: 72px 0 0; }
+  h2 { font-size: clamp(1.6rem, 3.4vw, 2.2rem); line-height: 1.2; letter-spacing: -.02em; margin: 0 0 10px;
+       text-wrap: balance; }
+  .intro { color: var(--sub); max-width: 64ch; margin: 0 0 30px; }
+  .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--accent); margin: 0 0 8px; }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;
+           counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  .steps li { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px;
+              counter-increment: step; }
+  .steps li::before { content: counter(step); display: grid; place-items: center; width: 34px; height: 34px;
+                      border-radius: 50%; background: linear-gradient(135deg, #8b7cf8, #4534c9); color: #fff;
+                      font-weight: 700; margin-bottom: 12px; }
+  h3 { font-size: 1.1rem; margin: 0 0 6px; line-height: 1.3; }
+  .steps p, .feat p { margin: 0; color: var(--sub); font-size: 16px; }
+
+  .feats { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; }
+  .feat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .feat svg { width: 26px; height: 26px; color: var(--accent); margin-bottom: 12px; display: block; }
+  .feat code { color: var(--accent); font-size: .92em; }
+
+  .split { display: grid; grid-template-columns: 1fr; gap: 28px; align-items: center; }
+  @media (min-width: 900px) { .split { grid-template-columns: 5fr 7fr; } .split.flip { grid-template-columns: 7fr 5fr; } }
+  .split .shot { margin: 0; }
+  .split ul { padding-left: 1.2em; margin: 0; color: var(--sub); }
+  .split li { margin: 6px 0; }
+  .split li strong { color: var(--text); }
+
+  /* your data */
+  .data { background: var(--soft); border: 1px solid var(--softline); border-radius: 20px;
+          padding: clamp(24px, 4.5vw, 40px); }
+  .data p { max-width: 70ch; margin: 0 0 12px; }
+  .data p:last-of-type { margin-bottom: 22px; }
+  .data .actions { justify-content: flex-start; }
+
+  /* download */
+  .dl { background: var(--panel); color: var(--panel-text); border: 1px solid var(--panel-line);
+        border-radius: 20px; padding: clamp(26px, 5vw, 48px); margin-top: 72px; }
+  .dl h2 { color: var(--panel-text); }
+  .dl p { color: var(--panel-sub); max-width: 64ch; }
+  .dl a { color: var(--panel-accent); }
+  .os { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 26px 0 22px; }
+  .os a { display: block; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .16);
+          border-radius: 14px; padding: 20px; text-decoration: none; color: var(--panel-text); }
+  .os a:hover { background: rgba(255, 255, 255, .11); border-color: var(--panel-accent); color: var(--panel-text); }
+  .os strong { display: block; font-size: 1.15rem; }
+  .os span { display: block; color: var(--panel-sub); font-size: 15px; margin-top: 2px; }
+  .os code { display: block; margin-top: 12px; color: var(--panel-live); font-size: 13px; overflow-wrap: anywhere; }
+  .dl .btn.main { background: var(--panel-accent); border-color: var(--panel-accent); color: var(--panel-ink); }
+  .dl .btn.main:hover { background: #a69bfa; border-color: #a69bfa; color: var(--panel-ink); }
+  .dl .btn.ghost { background: transparent; border-color: rgba(255, 255, 255, .35); color: var(--panel-text); }
+  .dl .btn.ghost:hover { border-color: #fff; color: #fff; }
+  .dl .actions { justify-content: flex-start; }
+  .dl .note { font-size: 15px; margin: 22px 0 0; }
+
+  footer { padding: 56px 0 48px; color: var(--sub); font-size: 15px; }
+  footer .wrap { border-top: 1px solid var(--line); padding-top: 28px; }
+  footer p { margin: 0 0 8px; max-width: 80ch; }
+  footer .copy { color: var(--text); font-weight: 600; }
 </style>
 </head>
 <body>
-<main>
-  <img src="https://raw.githubusercontent.com/Leaven-Labs/Stream-Scheduler/main/assets/icon.svg" width="84" height="84" alt="">
-  <h1>Stream Scheduler</h1>
-  <p class="lead">Schedules your weekly live streams on YouTube and Facebook by itself, with the date of each
-    stream already in the title.</p>
-  <a class="button" href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">Download</a>
-  <a class="button plain" href="https://github.com/Leaven-Labs/Stream-Scheduler">Source code</a>
-  <img class="shot" src="upcoming-dark.png" alt="The list of upcoming streams">
 
-  <h2>What it does</h2>
-  <p>You say when you stream, for example every Sunday at 8:00 AM, and what the title is. The app, running on
-    your own computer, creates each scheduled live stream on your YouTube channel and your Facebook Page a
-    chosen number of days before, through the platforms' official APIs.</p>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.svg" alt="" width="40" height="40">Stream Scheduler</a>
+    <nav class="links" aria-label="Page">
+      <a href="#features">Features</a>
+      <a href="#download">Download</a>
+      <a href="privacy.html">Privacy policy</a>
+      <a href="https://github.com/Leaven-Labs/Stream-Scheduler#readme">Guide</a>
+      <a href="https://github.com/Leaven-Labs/Stream-Scheduler">Source code</a>
+    </nav>
+  </div>
+</header>
 
-  <h2>Your data</h2>
-  <p>Stream Scheduler is a free, open-source desktop program by Leaven Labs. It has no server: it talks from
-    your computer directly to Google and Meta, and your sign-ins are kept in your system's keychain. See the
-    <a href="privacy.html">privacy policy</a>.</p>
+<main id="top">
+  <div class="wrap hero">
+    <h1>Your weekly live streams, scheduled by themselves</h1>
+    <p class="lead">Stream Scheduler is a free app that creates your scheduled live streams on YouTube each week,
+      with the date of each stream already in the title, and shows the coming stream on your website.</p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+        Download</a>
+      <a class="btn" href="https://github.com/Leaven-Labs/Stream-Scheduler">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>
+        Source code</a>
+    </div>
+    <p class="fine">Free, for Windows, Mac and Linux. No account with us, nothing to pay.
+      <a href="privacy.html">Privacy policy</a></p>
 
-  <footer>
-    © 2026 Leaven Labs · <a href="privacy.html">Privacy policy</a> · <a href="https://github.com/Leaven-Labs/Stream-Scheduler/blob/main/LICENSE">MIT license</a>
-    · YouTube and Facebook are trademarks of their owners. This app is not affiliated with or endorsed by Google or Meta.
-  </footer>
+    <div class="fill">
+      <p class="cap">You write the title once</p>
+      <p class="tpl">Sunday Service - <code>{date}</code></p>
+      <ol aria-label="The streams the app creates from that title">
+        <li><span class="t">Sunday Service - <b>November 15, 2027</b></span>
+          <span class="w">Sun 8:00 AM</span><span class="s done">On YouTube</span></li>
+        <li><span class="t">Sunday Service - <b>November 22, 2027</b></span>
+          <span class="w">Sun 8:00 AM</span><span class="s">Will be created Sat 9:00 AM</span></li>
+        <li><span class="t">Sunday Service - <b>November 29, 2027</b></span>
+          <span class="w">Sun 8:00 AM</span><span class="s">Will be created Sat 9:00 AM</span></li>
+      </ol>
+    </div>
+
+    <div class="shot">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="screenshots/upcoming-dark.png">
+        <img src="screenshots/upcoming-light.png" width="2240" height="1480"
+             alt="The Upcoming page: the next streams with their dates and titles, and whether each is on YouTube and on the website">
+      </picture>
+    </div>
+  </div>
+
+  <section class="wrap" id="how">
+    <p class="eyebrow">How it works</p>
+    <h2>Set it up once</h2>
+    <p class="intro">After that, nobody has to remember to create Sunday's stream on Saturday night.</p>
+    <ol class="steps">
+      <li><h3>Connect your channel</h3><p>A guide takes you through signing in to YouTube on Google's own page, one step at a time.</p></li>
+      <li><h3>Say when you stream</h3><p>For example every Sunday at 8:00 AM, created the Saturday before at 9:00 AM.</p></li>
+      <li><h3>The app creates each stream</h3><p>At that time your computer makes the scheduled live stream on your channel, with the date filled in.</p></li>
+      <li><h3>Your website follows</h3><p>A page of your Wix or WordPress site is pointed at the new stream, and you are told if anything failed.</p></li>
+    </ol>
+  </section>
+
+  <section class="wrap" id="features">
+    <p class="eyebrow">Features</p>
+    <h2>What it does for you</h2>
+    <p class="intro">Made for one job, the stream that comes back every week, and for the volunteers who look after it.</p>
+    <div class="feats">
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 01-14 5.3M4 12a8 8 0 0114-5.3M18 3v4h-4M6 21v-4h4"/></svg>
+        <h3>Schedules that repeat</h3>
+        <p>Every week on the days you choose, and you decide for each schedule which of your destinations it goes to.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14M12 6v13M9 19h6"/></svg>
+        <h3>Titles that fill in the date</h3>
+        <p><code>{date}</code>, <code>{weekday}</code>, <code>{month}</code>, <code>{day}</code>, <code>{year}</code> and
+          <code>{time}</code>, in the title and the description, with a choice of date formats.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
+        <h3>One-time streams and series</h3>
+        <p>A single date, such as Christmas Eve, or a first and a last date, such as Wednesdays in Lent.
+          The app writes “Lent, week 2” by itself.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg>
+        <h3>Change one stream</h3>
+        <p>Give a single date another title, time or thumbnail, or skip it, without touching the schedule.
+          A stream that already exists is changed on YouTube too.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-4 4 3 3-2 6 4"/><circle cx="16" cy="9" r="1.2"/></svg>
+        <h3>Thumbnails and YouTube settings</h3>
+        <p>A thumbnail per schedule; who can watch, the playlist, the category, the delay and the stream key per channel.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <h3>Preview before it is sent</h3>
+        <p>See the title, description, time and every setting of the next streams, without sending anything.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4zM10 21h4"/></svg>
+        <h3>Alerts when a stream needs you</h3>
+        <p>By email, Discord, Slack or Pushover when a stream could not be scheduled or a sign-in stopped working,
+          with an optional weekly summary.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        <h3>Check and repair</h3>
+        <p>One click sees whether every scheduled stream is still on YouTube and on your website, and puts back what is missing.</p>
+      </div>
+      <div class="feat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14A8 8 0 019.5 4 8 8 0 1020 14z"/></svg>
+        <h3>Runs quietly</h3>
+        <p>Stays in the tray, can start when you log in, and catches up on what it missed while the computer was off.
+          Light and dark themes.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Your schedule</p>
+        <h2>Say it once, in plain words</h2>
+        <p class="intro">A schedule is one small window. The preview at the bottom shows the next stream exactly as it
+          will be created.</p>
+        <ul>
+          <li><strong>When you stream</strong>: the days of the week and the time.</li>
+          <li><strong>When it is created</strong>: how many days before, and at what hour.</li>
+          <li><strong>What it is called</strong>: a title and description that fill in the date.</li>
+          <li><strong>Where it goes</strong>: your YouTube channel, and your website if you like.</li>
+        </ul>
+      </div>
+      <div class="shot">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="screenshots/schedule-dark.png">
+          <img src="screenshots/schedule-light.png" width="1560" height="1520" loading="lazy"
+               alt="The schedule window: the days, the stream time, when it is created, the title with {date}, and a preview of the next stream">
+        </picture>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="split flip">
+      <div class="shot">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="screenshots/wizard-youtube-dark.png">
+          <img src="screenshots/wizard-youtube-light.png" width="1800" height="1280" loading="lazy"
+               alt="The YouTube guide: a list of steps at the left and the instructions for one step at the right">
+        </picture>
+      </div>
+      <div>
+        <p class="eyebrow">Guided setup</p>
+        <h2>A guide for every connection</h2>
+        <p class="intro">Connecting YouTube, a Wix or WordPress website, a webhook or an alert takes 10 to 15 minutes,
+          once. Each guide explains what to click on the other side, and what each step means for the safety of
+          your account.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Alerts</p>
+        <h2>Hear about it before Sunday</h2>
+        <p class="intro">The app tells you when a stream could not be scheduled or a sign-in stopped working, so
+          there is time to put it right.</p>
+        <ul>
+          <li><strong>Where</strong>: email, Discord, Slack or Pushover.</li>
+          <li><strong>Weekly summary</strong>: the streams of the coming seven days and whether each is in place.</li>
+          <li><strong>Silence means something</strong>: no summary means the app is not running.</li>
+        </ul>
+      </div>
+      <div class="shot">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="screenshots/alerts-dark.png">
+          <img src="screenshots/alerts-light.png" width="2240" height="1480" loading="lazy"
+               alt="The Alerts page: email, Discord, Slack and Pushover, and the choice of what to be told">
+        </picture>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="data">
+    <div class="data">
+      <p class="eyebrow">Your data</p>
+      <h2>No server, no account with us</h2>
+      <p>Stream Scheduler runs on your own computer and talks directly to YouTube and to your website. When you
+        connect a channel, you sign in on Google's own page and allow the app to manage your YouTube account. It
+        uses that only to read your channel's name and stream keys' names, and to create the scheduled live
+        streams of your schedules through YouTube's official API.</p>
+      <p>Your sign-ins are kept in your system's keychain, never in a file. Leaven Labs receives nothing.</p>
+      <div class="actions">
+        <a class="btn primary" href="privacy.html">Read the privacy policy</a>
+        <a class="btn" href="https://github.com/Leaven-Labs/Stream-Scheduler/blob/main/SECURITY.md">How the app keeps sign-ins safe</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <section class="dl" id="download">
+      <h2>Download Stream Scheduler</h2>
+      <p>Free for anyone. This is an early (alpha) version: YouTube scheduling and the Wix website update are
+        confirmed on a real channel and site; the release notes say what is still being tested. The streams are
+        created by your computer, so it has to be on at the time you chose, or it catches up when it next runs.</p>
+      <div class="os">
+        <a href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">
+          <strong>Windows</strong><span>Windows 10 or 11, 64-bit</span><code>Stream-Scheduler-Windows-Setup.exe</code></a>
+        <a href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">
+          <strong>Mac</strong><span>Apple silicon (M1 or newer)</span><code>Stream-Scheduler-macOS.zip</code></a>
+        <a href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">
+          <strong>Linux</strong><span>64-bit, Ubuntu 22.04 or newer</span><code>Stream-Scheduler-Linux-x86_64.tar.gz</code></a>
+      </div>
+      <div class="actions">
+        <a class="btn main" href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">Releases and what's new</a>
+        <a class="btn ghost" href="https://github.com/Leaven-Labs/Stream-Scheduler">Source code on GitHub</a>
+      </div>
+      <p class="note">The downloads are not code-signed yet, so Windows and macOS ask you to confirm the first time.
+        The <a href="https://github.com/Leaven-Labs/Stream-Scheduler#install">install guide</a> shows what to click.</p>
+    </section>
+  </div>
 </main>
+
+<footer>
+  <div class="wrap">
+    <p class="copy">Copyright &copy; 2026 Aaron Steger.</p>
+    <p>Published by <a href="https://leavenlabs.org/">Leaven Labs</a>. Free software under the
+      <a href="https://github.com/Leaven-Labs/Stream-Scheduler/blob/main/LICENSE">MIT License</a>: anyone may use,
+      copy, change and share it, as long as the copyright notice and license are kept with it.</p>
+    <p>YouTube and Facebook are trademarks of their owners. This app is not affiliated with or endorsed by
+      Google, Meta or Wix.</p>
+    <p><a href="privacy.html">Privacy policy</a> ·
+      <a href="https://github.com/Leaven-Labs/Stream-Scheduler">Source code</a> ·
+      <a href="https://github.com/Leaven-Labs/Stream-Scheduler/releases">All releases</a> ·
+      <a href="https://github.com/Leaven-Labs/Stream-Scheduler/issues">Report a problem</a> ·
+      <a href="https://github.com/Leaven-Labs/Stream-Scheduler/blob/main/SECURITY.md">Security</a></p>
+  </div>
+</footer>
+
 </body>
 </html>

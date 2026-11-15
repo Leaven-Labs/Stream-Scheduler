@@ -1,5 +1,5 @@
 """The smaller windows: a schedule, the words of one single stream, a preview of what would be sent,
-and a YouTube channel's options."""
+a YouTube channel's options, and the About box."""
 import os
 from datetime import datetime, timedelta
 
@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QFileDialog, QGrid
                                QPlainTextEdit, QScrollArea, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
 import engine
+import paths
 import recurrence
 import titles
 import ui
@@ -513,3 +514,49 @@ class YouTubeOptionsDialog(QDialog):
             self.error.setText(problem)
         else:
             self.accept()
+
+
+class AboutDialog(QDialog):
+    """Who made the app, who publishes it, which version this is, and its license."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle(f"About {paths.APP_NAME}")
+        self.setMinimumWidth(460)
+        col = QVBoxLayout(self)
+        col.setContentsMargins(26, 22, 26, 18)
+        col.setSpacing(12)
+        head = QHBoxLayout()
+        head.setSpacing(14)
+        head.addWidget(ui.Logo(48))
+        names = QVBoxLayout()
+        names.setSpacing(2)
+        names.addWidget(ui.label(paths.APP_NAME, "pagetitle"))
+        names.addWidget(ui.label(f"Version {paths.VERSION}", "sub"))
+        head.addLayout(names, 1)
+        col.addLayout(head)
+        col.addWidget(ui.rule())
+        facts = QGridLayout()
+        facts.setHorizontalSpacing(18)
+        facts.setVerticalSpacing(8)
+        facts.setColumnStretch(1, 1)
+        for row, (name, html) in enumerate([
+                ("Author", paths.AUTHOR),
+                ("Publisher", f"<a href='{paths.PUBLISHER_URL}'>{paths.PUBLISHER}</a>"),
+                ("Version", paths.VERSION),
+                ("License", f"<a href='{paths.LICENSE_URL}'>MIT License</a>"),
+                ("Project", f"<a href='{paths.PROJECT_URL}'>{paths.PROJECT_URL.split('//')[1]}</a>")]):
+            facts.addWidget(ui.label(name, "sub"), row, 0, Qt.AlignTop)
+            facts.addWidget(ui.rich(html), row, 1)
+        col.addLayout(facts)
+        col.addWidget(ui.rule())
+        col.addWidget(ui.label(
+            f"{paths.COPYRIGHT}. Free software: anyone may use, copy, change and share it, as long as the "
+            "copyright notice and license are kept with it. It comes without warranty of any kind.", "small", wrap=True))
+        col.addWidget(ui.label(
+            "YouTube and Facebook are trademarks of their owners; this app is not affiliated with or endorsed by "
+            "Google, Meta or Wix.", "small", wrap=True))
+        bar = QHBoxLayout()
+        bar.addStretch(1)
+        bar.addWidget(ui.button("Close", "primary", self.accept))
+        col.addLayout(bar)

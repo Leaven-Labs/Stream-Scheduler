@@ -176,7 +176,15 @@ pip install -r requirements-build.txt
 python tools/build.py
 ```
 
-## License
+## Security, license and credits
 
-Copyright © 2026 Leaven Labs. Released under the MIT license, see [LICENSE](LICENSE). YouTube and Facebook are trademarks of their owners; this app is not
-affiliated with or endorsed by Google, Meta or Wix.
+To report a security problem, please don't open a public issue: see [SECURITY.md](SECURITY.md).
+
+Free software under the [MIT License](https://github.com/Leaven-Labs/Stream-Scheduler/blob/main/LICENSE): anyone may use, copy, change and share it, as long as the
+copyright notice and license are kept with it.
+
+Copyright (c) 2026 Aaron Steger. Published by [Leaven Labs](https://leavenlabs.org/). The app's
+About box (Settings → About) shows the author, publisher, version and license.
+
+YouTube and Facebook are trademarks of their owners; this app is not affiliated with or endorsed by
+Google, Meta or Wix.
