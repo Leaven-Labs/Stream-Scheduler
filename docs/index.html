@@ -28,13 +28,14 @@
     --g1: #4534c9; --g2: #8b7cf8; --g3: #ff6b81; --spark: #ff8c9d; --panel: #1f1d3a;
     --ok: #17805a; --okbg: #e1f5ec;
     --shadow: 0 1px 2px rgba(27, 29, 42, .06), 0 18px 40px rgba(27, 29, 42, .12);
+    --p: .5; --page: 0; --glow: .75; --glint: #ffc2cb;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1117; --surface: #1a1e2b; --ink: #eceef5; --sub: #9299ad; --line: #2a2f40; --wash: #141722;
       --accent: #a69bfa; --t1: #a69bfa; --t2: #ff6b81; --soft: #1f1d3a;
       --ok: #4fd1a1; --okbg: #12322a;
-      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 18px 40px rgba(0, 0, 0, .4);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 18px 40px rgba(0, 0, 0, .4); --glow: .6;
     }
   }
   :root {
@@ -59,8 +60,11 @@
              margin-bottom: 12px; }
   .eyebrow a { color: inherit; text-decoration: none; }
   .eyebrow a:hover { text-decoration: underline; }
-  .gradtext { background: linear-gradient(100deg, var(--t1), var(--t2)); -webkit-background-clip: text;
-              background-clip: text; color: transparent; }
+  .gradtext { background: linear-gradient(100deg, transparent 42%, var(--glint) 50%, transparent 58%) 100% 0 / 250% 100% no-repeat,
+                          linear-gradient(100deg, var(--t1), var(--t2));
+              -webkit-background-clip: text; background-clip: text; color: transparent;
+              animation: sweep 7s ease-in-out 1s infinite; }
+  @keyframes sweep { 0%, 55% { background-position: 100% 0, 0 0; } 100% { background-position: 0% 0, 0 0; } }
 
   /* top bar */
   header.top .wrap { display: flex; align-items: center; gap: 12px 28px; flex-wrap: wrap; padding-top: 22px;
@@ -128,8 +132,10 @@
   .steps li { border-top: 1px solid var(--line); padding: 20px 0 26px; counter-increment: step; display: grid;
               gap: 8px; align-content: start; }
   .steps li::before { content: counter(step); font: 600 2.7rem/1 var(--display); justify-self: start;
-                      background: linear-gradient(100deg, var(--t1), var(--t2)); -webkit-background-clip: text;
-                      background-clip: text; color: transparent; }
+                      background: linear-gradient(100deg, transparent 42%, var(--glint) 50%, transparent 58%)
+                                    calc((1 - var(--p)) * 100%) 0 / 250% 100% no-repeat,
+                                  linear-gradient(100deg, var(--t1), var(--t2));
+                      -webkit-background-clip: text; background-clip: text; color: transparent; }
   .steps p, .feat p { color: var(--sub); font-size: 16px; }
 
   .feats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 44px; margin-top: 40px; }
@@ -152,8 +158,8 @@
   /* download: one dark panel, the same in both themes */
   .dl { position: relative; isolation: isolate; overflow: hidden; margin-top: 84px; border-radius: 28px;
         padding: clamp(26px, 5vw, 52px); color: #fff;
-        background: radial-gradient(60% 90% at 100% 0%, color-mix(in srgb, var(--g2) 60%, transparent), transparent 70%),
-                    radial-gradient(50% 80% at 0% 100%, color-mix(in srgb, var(--g3) 45%, transparent), transparent 70%),
+        background: radial-gradient(60% 90% at calc(100% - var(--p) * 70%) calc(var(--p) * 40%), color-mix(in srgb, var(--g2) 60%, transparent), transparent 70%),
+                    radial-gradient(50% 80% at calc(var(--p) * 70%) calc(100% - var(--p) * 40%), color-mix(in srgb, var(--g3) 45%, transparent), transparent 70%),
                     var(--panel); }
   .dl p { color: #d6dbea; max-width: 64ch; margin-top: 12px; }
   .dl a { color: var(--spark); }
@@ -200,9 +206,44 @@
   .data { background: var(--wash); border: 1px solid var(--line); border-radius: 28px;
           padding: clamp(24px, 4.5vw, 48px); }
   .data p:not(.eyebrow) { max-width: 70ch; margin-top: 14px; }
+
+  /* Motion (the script at the end of the page gives each marked piece --p, and the page --page).
+     Halo: a blurred copy of the gradient behind a panel, brightest at mid-window. */
+  .progress { position: fixed; inset: 0 0 auto; height: 3px; z-index: 11; background: var(--grad);
+              transform: scaleX(var(--page)); transform-origin: left; pointer-events: none; }
+  .halo { position: relative; isolation: isolate; min-width: 0;
+          --bell: calc(1 - max(2 * var(--p) - 1, 1 - 2 * var(--p))); }
+  .halo::before { content: ""; position: absolute; z-index: -1; inset: 10% 2% -4%; border-radius: 48px;
+                  background: linear-gradient(100deg, var(--g1), var(--g2), var(--g3), var(--g2), var(--g1));
+                  background-size: 300% 100%; background-position: calc(var(--p) * 100%) 0;
+                  filter: blur(42px); opacity: calc((.15 + var(--bell) * .85) * var(--glow));
+                  transform: translateY(calc(40px - var(--bell) * 22px)) scale(calc(.9 + var(--bell) * .12)); }
+  .btn.primary::after, .dl .btn.gold::after, .dl .btn.main::after { animation: breathe 3.6s ease-in-out infinite alternate; }
+  .btn.primary:hover::after, .dl .btn.gold:hover::after, .dl .btn.main:hover::after { animation-duration: 1.2s; }
+  @keyframes breathe { from { opacity: .35; transform: scaleX(.8); } to { opacity: 1; transform: scaleX(1.08); } }
+  .dl .btn.gold, .dl .btn.main { position: relative; }
+  .dl .btn.gold::after, .dl .btn.main::after { content: ""; position: absolute; inset: auto 10px -7px; height: 16px;
+                                               border-radius: 50%; background: var(--spark); filter: blur(14px);
+                                               z-index: -1; }
+  /* The hero's streams arrive one by one; the first is made ("On YouTube") with a short flash of green. */
+  .fill li { animation: arrive .6s ease-out .3s both; }
+  .fill li:nth-child(2) { animation-delay: .55s; }
+  .fill li:nth-child(3) { animation-delay: .8s; }
+  .fill .s.done { position: relative; animation: made 1.5s ease-out 1.4s both; }
+  .fill .s.done::after { content: ""; position: absolute; inset: -1px; border-radius: 99px; border: 2px solid var(--ok);
+                         opacity: 0; animation: ping 3.4s ease-out 3s infinite; }
+  @keyframes arrive { from { opacity: 0; transform: translateY(8px); } }
+  @keyframes made { 0% { background: var(--bg); color: var(--sub); border-color: var(--line); box-shadow: 0 0 0 0 transparent; }
+                    40% { box-shadow: 0 0 22px 2px var(--ok); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  @keyframes ping { 0% { opacity: .7; transform: scale(1); } 55%, 100% { opacity: 0; transform: scale(1.22, 1.7); } }
+  @media (prefers-reduced-motion: reduce) {
+    .gradtext, .btn.primary::after, .dl .btn.gold::after, .dl .btn.main::after, .fill li, .fill .s.done, .fill .s.done::after { animation: none; }
+    .progress { display: none; }
+  }
 </style>
 </head>
 <body>
+<div class="progress" aria-hidden="true"></div>
 
 <header class="top">
   <div class="wrap">
@@ -252,12 +293,14 @@
   </div>
 
   <div class="wrap">
+    <div class="halo" data-scroll>
     <div class="stage">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="screenshots/upcoming-dark.png">
         <img src="screenshots/upcoming-light.png" width="2240" height="1480"
              alt="The Upcoming page: the next streams with their dates and titles, and whether each is on YouTube and on the website">
       </picture>
+    </div>
     </div>
   </div>
 
@@ -266,10 +309,10 @@
     <h2>Set it up once</h2>
     <p class="intro">After that, nobody has to remember to create Sunday's stream on Saturday night.</p>
     <ol class="steps">
-      <li><h3>Connect your channel</h3><p>A guide takes you through signing in to YouTube on Google's own page, one step at a time.</p></li>
-      <li><h3>Say when you stream</h3><p>For example every Sunday at 8:00 AM, created the Saturday before at 9:00 AM.</p></li>
-      <li><h3>The app creates each stream</h3><p>At that time your computer makes the scheduled live stream on your channel, with the date filled in.</p></li>
-      <li><h3>Your website follows</h3><p>A page of your Wix or WordPress site is pointed at the new stream, and you are told if anything failed.</p></li>
+      <li data-scroll><h3>Connect your channel</h3><p>A guide takes you through signing in to YouTube on Google's own page, one step at a time.</p></li>
+      <li data-scroll><h3>Say when you stream</h3><p>For example every Sunday at 8:00 AM, created the Saturday before at 9:00 AM.</p></li>
+      <li data-scroll><h3>The app creates each stream</h3><p>At that time your computer makes the scheduled live stream on your channel, with the date filled in.</p></li>
+      <li data-scroll><h3>Your website follows</h3><p>A page of your Wix or WordPress site is pointed at the new stream, and you are told if anything failed.</p></li>
     </ol>
   </section>
 
@@ -416,7 +459,7 @@
   </section>
 
   <div class="wrap">
-    <section class="dl" id="download">
+    <section class="dl" id="download" data-scroll>
       <h2>Download Stream Scheduler</h2>
       <p>Free for anyone. This is an early (alpha) version: YouTube scheduling and the Wix website update are
         confirmed on a real channel and site; the release notes say what is still being tested. The streams are
@@ -457,5 +500,30 @@
   </div>
 </footer>
 
+<script>
+  // Motion. Each piece marked data-scroll is told how far it has travelled through the window
+  // (--p: 0 = coming in at the bottom, 1 = gone at the top), and the page how far it has been read
+  // (--page). The CSS does the rest. With "reduce motion" set, nothing is measured and all stays still.
+  (function () {
+    var root = document.documentElement, still = matchMedia("(prefers-reduced-motion: reduce)");
+    var pieces = [].slice.call(document.querySelectorAll("[data-scroll]")), waiting = false;
+    function measure() {
+      waiting = false;
+      if (still.matches) return;
+      var h = innerHeight, far = root.scrollHeight - h;
+      root.style.setProperty("--page", far > 0 ? Math.min(1, scrollY / far).toFixed(4) : "0");
+      pieces.forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.bottom < -h || r.top > 2 * h) return;
+        el.style.setProperty("--p", Math.min(1, Math.max(0, (h - r.top) / (h + r.height))).toFixed(4));
+      });
+    }
+    function ask() { if (!waiting) { waiting = true; requestAnimationFrame(measure); } }
+    addEventListener("scroll", ask, { passive: true });
+    addEventListener("resize", ask);
+    addEventListener("load", ask);
+    ask();
+  })();
+</script>
 </body>
 </html>
