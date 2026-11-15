@@ -178,5 +178,5 @@ python tools/build.py
 
 ## License
 
-MIT, see [LICENSE](LICENSE). YouTube and Facebook are trademarks of their owners; this app is not
+Copyright © 2026 Leaven Labs. Released under the MIT license, see [LICENSE](LICENSE). YouTube and Facebook are trademarks of their owners; this app is not
 affiliated with or endorsed by Google, Meta or Wix.
