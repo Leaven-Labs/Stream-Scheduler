@@ -11,6 +11,7 @@ import os
 import platform
 import re
 import shutil
+import struct
 import subprocess
 import sys
 
@@ -19,7 +20,7 @@ sys.path.insert(0, root)
 os.chdir(root)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt  # noqa: E402
 from PySide6.QtGui import QGuiApplication, QImage, QPainter  # noqa: E402
 
 import paths  # noqa: E402
@@ -39,13 +40,34 @@ def picture(size):
     return image
 
 
+def write_ico(path, sizes=(16, 24, 32, 48, 64, 128, 256)):
+    """A Windows icon file with one picture for each size, so that the small sizes get the icon's
+    thicker drawing and are not a 256-pixel picture made smaller. Each picture is stored as a PNG."""
+    pictures = []
+    for size in sizes:
+        data = QByteArray()
+        buffer = QBuffer(data)
+        buffer.open(QIODevice.WriteOnly)
+        if not picture(size).save(buffer, "PNG"):
+            raise SystemExit("could not write icon.ico")
+        buffer.close()
+        pictures.append((size, bytes(data)))
+    with open(path, "wb") as f:
+        f.write(struct.pack("<HHH", 0, 1, len(pictures)))
+        offset = 6 + 16 * len(pictures)
+        for size, png in pictures:                 # in the list of pictures, 0 stands for 256
+            f.write(struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0, 1, 32, len(png), offset))
+            offset += len(png)
+        for _, png in pictures:
+            f.write(png)
+
+
 def icon():
     """The program's icon file, drawn by the same code as the icon in the window."""
     app = QGuiApplication.instance() or QGuiApplication([])  # noqa: F841 (painting text-free pictures needs one)
     if sys.platform == "win32":
         path = os.path.join(work, "icon.ico")
-        if not picture(256).save(path, "ICO"):
-            raise SystemExit("could not write icon.ico")
+        write_ico(path)
         return path
     if sys.platform == "darwin":
         folder = os.path.join(work, "icon.iconset")
