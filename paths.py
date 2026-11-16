@@ -11,7 +11,7 @@ import sys
 
 APP_NAME = "Stream Scheduler"
 APP_SLUG = "stream-scheduler"
-VERSION = "0.0.6-alpha"
+VERSION = "0.0.7-alpha"
 AUTHOR = "Aaron Steger"
 COPYRIGHT = f"Copyright (c) 2026 {AUTHOR}"
 PUBLISHER = "Leaven Labs"

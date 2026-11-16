@@ -3,8 +3,8 @@
 <p align="center">Schedules your weekly live streams on <b>YouTube</b> by itself, with the date of each<br>
 stream already in the title, shows the coming stream on your website, and tells you when one needs you.</p>
 
-> **v0.0.6 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
-> site. New since 0.0.5 and **not yet confirmed on real accounts**: alerts (email, Discord, Slack,
+> **v0.0.7 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
+> site. New in 0.0.7 is the look of the app, **not yet seen on a real Windows PC or Mac**. New since 0.0.5 and **not yet confirmed on real accounts**: alerts (email, Discord, Slack,
 > Pushover), thumbnails, playlists and the other YouTube settings, cancelling a stream, WordPress and
 > webhook destinations, and the notice of new versions. Please report what you find.
 
