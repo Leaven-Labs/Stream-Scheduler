@@ -1,9 +1,24 @@
-The seventh alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
+The eighth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
 of each stream in the title, shows the coming stream on your website, and tells you when one needs you.
 
 > **Alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and site.
 > Everything under "New in 0.0.5" that talks to another service passed its automated tests but is
 > **not yet confirmed on real accounts**. Try each one once before relying on it.
+
+## New in 0.0.7
+
+- **The look of the website, in the app.** Its gradient of indigo, violet and coral is on a line along
+  the top of the window, the main buttons, the switches, the date leaves and the page titles, and the
+  headings are in the website's typeface. Where things are and what they do has not changed.
+- **A soft glow** under the main buttons and under the next stream on the Upcoming page.
+- **Small animations.** A page fades in and a band of light crosses its title; the menu's marker and
+  the switches slide; a ring spreads from the green light while auto-scheduling is on; and a light
+  runs along the top line while the app is working, so you can see that it is busy.
+- **Settings → Animations** switches them off for a still window. Nothing moves while the window is
+  closed to the tray.
+
+The new look passed the automated tests but is **not yet seen on a real Windows PC or Mac**. Please
+report anything that looks wrong or feels slow.
 
 ## New in 0.0.6
 

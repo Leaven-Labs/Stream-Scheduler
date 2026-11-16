@@ -11,7 +11,7 @@ from datetime import datetime
 
 import paths
 
-DEFAULT_SETTINGS = {"theme": "auto", "clock": "12", "tray": True, "autostart": False, "update_check": True}
+DEFAULT_SETTINGS = {"theme": "auto", "clock": "12", "tray": True, "autostart": False, "update_check": True, "motion": True}
 HISTORY_LIMIT = 500
 
 

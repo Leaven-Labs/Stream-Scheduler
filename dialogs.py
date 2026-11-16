@@ -556,6 +556,9 @@ class AboutDialog(QDialog):
         col.addWidget(ui.label(
             "YouTube and Facebook are trademarks of their owners; this app is not affiliated with or endorsed by "
             "Google, Meta or Wix.", "small", wrap=True))
+        col.addWidget(ui.label(
+            "The headings are set in Fraunces, by The Fraunces Project Authors, under the SIL Open Font License.",
+            "small", wrap=True))
         bar = QHBoxLayout()
         bar.addStretch(1)
         bar.addWidget(ui.button("Close", "primary", self.accept))
