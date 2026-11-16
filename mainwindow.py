@@ -141,13 +141,15 @@ class UpcomingPage(Page):
         items = engine.upcoming(self.store, limit=10)
         if not items:
             self.empty("Nothing coming up", "Every schedule is switched off.")
+        coming = next((item for item in items if not item["skipped"]), None)
         for item in items:
-            self.col.addWidget(self.stream_card(item))
+            card = self.stream_card(item, first=item is coming)
+            self.col.addWidget(ui.Underglow(card) if item is coming else card)   # the next stream glows
 
-    def stream_card(self, item):
+    def stream_card(self, item, first=False):
         now = datetime.now()
         skipped = item["skipped"]
-        card = ui.card("off" if skipped else "")
+        card = ui.card("off" if skipped else "next" if first else "")
         row = QHBoxLayout(card)
         row.setContentsMargins(16, 14, 16, 14)
         row.setSpacing(16)
@@ -721,6 +723,8 @@ class SettingsPage(Page):
         s = self.store.settings
         theme = ui.Segments([("auto", "Auto"), ("light", "Light"), ("dark", "Dark")], s["theme"])
         theme.changed.connect(lambda key: self.window_.set_theme(key))
+        moves = ui.Switch(s.get("motion", True))
+        moves.toggled.connect(self.set_motion)
         clock = ui.Segments([("12", "8:00 AM"), ("24", "08:00")], s["clock"])
         clock.changed.connect(lambda key: self.set("clock", key))
         tray = ui.Switch(s["tray"])
@@ -739,6 +743,8 @@ class SettingsPage(Page):
         line.addWidget(ui.button("Save a backup ...", clicked=self.backup))
         line.addWidget(ui.button("Restore ...", clicked=self.restore))
         self.section("Look", [("Theme", "Auto follows your system.", theme),
+                              ("Animations", "A page fades in, the next stream glows softly, and a light runs "
+                               "along the top while the app is working. Switch off for a still window.", moves),
                               ("Times", "How times are shown, and written by {time}.", clock)])
         self.section("Running in the background", [
             ("Keep running when the window is closed",
@@ -767,6 +773,11 @@ class SettingsPage(Page):
     def set(self, key, value):
         self.store.settings[key] = value
         self.store.save()
+
+    def set_motion(self, on):
+        self.set("motion", on)
+        ui.set_motion(on)
+        self.window_.side_status()   # the menu's light starts or stops
 
     def check_update(self):
         def done(new, error):
@@ -845,12 +856,18 @@ class MainWindow(QMainWindow):
         root = QWidget()
         root.setObjectName("root")
         self.setCentralWidget(root)
-        row = QHBoxLayout(root)
+        ui.set_motion(store.settings.get("motion", True))
+        whole = QVBoxLayout(root)
+        whole.setContentsMargins(0, 0, 0, 0)
+        whole.setSpacing(0)
+        self.beam = ui.Beam()   # the gradient line along the top; a light runs along it while working
+        whole.addWidget(self.beam)
+        row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
+        whole.addLayout(row, 1)
 
-        side = QFrame()
-        side.setObjectName("side")
+        side = ui.Side()
         side.setFixedWidth(224)
         col = QVBoxLayout(side)
         col.setContentsMargins(14, 20, 14, 16)
@@ -873,8 +890,8 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(page)
         col.addStretch(1)
         status = QHBoxLayout()
-        status.setContentsMargins(8, 0, 0, 0)
-        status.setSpacing(8)
+        status.setContentsMargins(4, 0, 0, 0)
+        status.setSpacing(4)
         self.dot = ui.Dot()
         self.status = ui.label("", "small", wrap=True)
         status.addWidget(self.dot, 0, Qt.AlignTop)
@@ -882,6 +899,7 @@ class MainWindow(QMainWindow):
         col.addLayout(status)
         row.addWidget(side)
         row.addWidget(self.stack, 1)
+        self.curtain = ui.Curtain(self.stack)
 
         self.tray = None
         if background and QSystemTrayIcon.isSystemTrayAvailable():
@@ -904,10 +922,13 @@ class MainWindow(QMainWindow):
         self.show_page(0)
 
     def show_page(self, index):
+        other = index != self.stack.currentIndex()
         self.nav[index].setChecked(True)
         self.stack.setCurrentIndex(index)
         self.pages[index].refresh()
         self.side_status()
+        if other:
+            self.curtain.drop()   # the new page fades in
 
     def refresh(self):
         self.pages[self.stack.currentIndex()].refresh()
@@ -916,8 +937,7 @@ class MainWindow(QMainWindow):
     def side_status(self):
         active = [s for s in self.store.schedules if s.get("enabled", True)]
         on = bool(active and self.store.destinations)
-        self.dot.color = "ok" if on else "off"
-        self.dot.update()
+        self.dot.set_color("ok" if on else "off")
         if self.busy:
             text = "Working ..."
         elif not on:
@@ -962,11 +982,13 @@ class MainWindow(QMainWindow):
         self.loud = loud
         self.busy = True
         self.pages[0].check_button.setEnabled(False)
+        self.beam.set_busy(True)
         self.side_status()
         ui.run_async(fn, self.worked)
 
     def worked(self, entries, error):
         self.busy = False
+        self.beam.set_busy(False)
         self.last_check = datetime.now()
         self.pages[0].check_button.setEnabled(True)
         self.refresh()

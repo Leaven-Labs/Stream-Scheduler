@@ -121,6 +121,22 @@ def uitest():
             for dialog in made:
                 dialog.grab()
             app.processEvents()
+            # what moves: with the window shown, let the clocks and animations run for a moment
+            import time
+            window.show()
+            window.beam.set_busy(True)
+            for i in range(len(window.pages)):
+                window.show_page(i)
+                for _ in range(4):
+                    time.sleep(0.03)
+                    app.processEvents()
+                    window.grab()
+            window.beam.set_busy(False)
+            ui.set_motion(False)
+            window.show_page(0)
+            app.processEvents()
+            ui.set_motion(True)
+            window.hide()
     import importlib
     backend = {"win32": "Windows", "darwin": "macOS"}.get(sys.platform, "SecretService")
     importlib.import_module("keyring.backends." + backend)   # a built program must carry its keychain

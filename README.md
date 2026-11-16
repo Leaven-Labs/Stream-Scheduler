@@ -40,7 +40,8 @@ stream already in the title, shows the coming stream on your website, and tells 
   another computer. The app says when a newer version is out.
 - **Sign-ins kept in the system keychain**, never in a file. See [SECURITY.md](SECURITY.md).
 - **Runs quietly.** Stays in the tray, can start at login, and catches up on what it missed while the
-  computer was off. Light and dark themes.
+  computer was off. Light and dark themes, in the look of the website; the small animations can be
+  switched off in Settings.
 
 | | |
 |---|---|
