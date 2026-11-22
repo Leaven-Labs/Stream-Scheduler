@@ -1,0 +1,13 @@
+.git
+.github
+docs
+build
+dist
+**/__pycache__
+**/*.pyc
+.venv*
+.env
+.env.*
+*.secret
+config.json
+app.lock

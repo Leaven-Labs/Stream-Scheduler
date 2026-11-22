@@ -1,0 +1,18 @@
+# Stream Scheduler in a container, shown in a web browser at http://<server>:5800. See docker/README.md.
+#   KEYRING_PASSWORD=choose-one docker compose up -d
+services:
+  stream-scheduler:
+    image: ghcr.io/leaven-labs/stream-scheduler:latest
+    # build: .          # or build it from this folder instead
+    container_name: stream-scheduler
+    restart: unless-stopped
+    ports:
+      - "5800:5800"
+    volumes:
+      - ./appdata:/config
+    shm_size: 1g        # for the browser used to sign in
+    environment:
+      KEYRING_PASSWORD: "${KEYRING_PASSWORD:?Set KEYRING_PASSWORD, which encrypts the sign-ins}"
+      TZ: ${TZ:-Etc/UTC}   # your time zone, e.g. America/Chicago: schedules use it
+      USER_ID: ${USER_ID:-1000}
+      GROUP_ID: ${GROUP_ID:-1000}

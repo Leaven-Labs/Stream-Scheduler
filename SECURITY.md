@@ -15,7 +15,9 @@
   access is yours to see and to cancel, and nobody else's key can reach your channel or Page.
 - **Secrets live in the system keychain**: Windows Credential Manager, the macOS Keychain, or the Linux
   Secret Service. They are encrypted with your login to the computer. If the system has no keychain,
-  the app refuses to save a sign-in; it never falls back to a plain file.
+  the app refuses to save a sign-in; it never falls back to a plain file. In the Docker container the
+  keychain is a GNOME keyring in the appdata folder, encrypted with the container's `KEYRING_PASSWORD`
+  ([docker/README.md](docker/README.md)).
 - **The settings file holds no secrets**: `config.json` has names, ids, schedules and history only.
 - **The least that works.**
   - YouTube: one permission (`youtube`), the narrowest that can create broadcasts. Kept: the OAuth
