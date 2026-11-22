@@ -73,9 +73,4 @@ def fill(store, vault, now=None):
             "status": "created" if yt else "failed", "remote_id": "abc" if yt else "",
             "url": "https://www.youtube.com/watch?v=abc" if yt else "",
             "note": "" if yt else "Wix refused the API key for this site. Check the key and the Site ID."})
-    engine.obs_record(store, first, {"at": (first["when"] - timedelta(minutes=55)).strftime("%Y-%m-%dT%H:%M:%S"),
-                                     "encoder": "Traditional PC", "ok": False, "notes": [],
-                                     "problems": [{"code": "key", "text": "OBS on Traditional PC is set to the "
-                                                   "stream key “Backup”, but Sunday Service is bound to the stream "
-                                                   "key “Default stream key”."}]}, 0, now)
     vault.set("demo-yt", "client_secret", "x")
