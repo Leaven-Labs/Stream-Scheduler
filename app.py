@@ -72,7 +72,10 @@ def run_once():
         return 0
     import notify
     store, vault = Store(), Vault()
-    entries = notify.after(store, vault, engine.run_due(store, vault))
+    entries = engine.run_due(store, vault)
+    for opened in engine.open_obs(store, vault):
+        print(f"obs      {opened['text']}")
+    entries = notify.after(store, vault, entries)
     for e in entries:
         print(f"{e['status']:8} {e['kind']:9} {e['when']}  {e['title']}  {e['note']}")
     if not entries:

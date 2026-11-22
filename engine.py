@@ -9,6 +9,7 @@ from datetime import datetime, time, timedelta
 import facebook
 import net
 import obs
+import obslaunch
 import recurrence
 import titles
 import vault as vault_module
@@ -338,6 +339,7 @@ def test_encoder(vault, encoder):
 # the key the YouTube broadcast is bound to? It only looks; what to do about it stays with a person.
 
 OBS_CHECKS = (55, 20)          # minutes before the start
+OBS_OPEN = 60                  # OBS on this computer is opened this long before the start (0: not opened)
 OBS_MANUAL = timedelta(hours=3)  # "Check now" also looks at OBS for the streams of the next three hours
 
 
@@ -407,6 +409,12 @@ def obs_check(store, vault, item, encoder, now=None):
         code = exc.reason if exc.reason in ("closed", "unreachable", "password", "old", "not_obs") else "closed"
         text = {"closed": f"OBS isn't open on {where}, or its WebSocket server is switched off.",
                 "unreachable": f"{where} could not be reached on the network. Is it switched on?"}.get(code, str(exc))
+        opened = obs_state(store).get(obs_key(item), {}).get("opened", {})
+        if code == "closed" and opened.get("result") == "failed":
+            text += " " + opened["text"]
+        elif code == "closed" and opened.get("result") == "opened":
+            text += (f" {opened['text'][:-1]}, but it does not answer: it may be waiting at a question on the "
+                     "screen, or its WebSocket server is switched off.")
         result["problems"].append({"code": code, "text": text})
         result["ok"] = False
         return result
@@ -456,6 +464,66 @@ def obs_check(store, vault, item, encoder, now=None):
     return result
 
 
+def obs_open_minutes(schedule):
+    """How long before the start OBS is opened; 0 when it is not."""
+    try:
+        return max(0, int(schedule.get("obs_open", OBS_OPEN)))
+    except (TypeError, ValueError):
+        return OBS_OPEN
+
+
+def obs_open_due(store, now=None):
+    """[(item, encoder)] of the streams whose OBS on this computer is to be opened now (once each)."""
+    now = now or datetime.now()
+    due = []
+    for item in upcoming(store, now, limit=1000):
+        encoder = store.encoder(item["schedule"].get("encoder_id"))
+        minutes = obs_open_minutes(item["schedule"])
+        if (encoder and encoder.get("local") and minutes and not item["skipped"]
+                and now >= item["when"] - timedelta(minutes=minutes)
+                and "opened" not in obs_state(store).get(obs_key(item), {})):
+            due.append((item, encoder))
+    return due
+
+
+def open_obs(store, vault, now=None):
+    """Open OBS on this computer for the streams that are due, unless it is open already. Records what
+    happened for each stream ("opened", "running" or "failed", with a sentence). Returns the records."""
+    now = now or datetime.now()
+    done = []
+    for item, encoder in obs_open_due(store, now):
+        clock = store.settings.get("clock", "12")
+        record = {"at": now.strftime("%Y-%m-%dT%H:%M:%S")}
+        open_already = obslaunch.running()
+        if open_already is None:   # cannot tell from the process list: ask OBS itself
+            try:
+                obs.connect(encoder["host"], encoder["port"], encoder_password(vault, encoder), timeout=3).close()
+                open_already = True
+            except obs.ObsError as exc:
+                open_already = exc.reason != "closed"
+            except vault_module.VaultError:
+                open_already = False
+        if open_already:
+            record.update(result="running", text="OBS was open already.")
+        else:
+            program = obslaunch.find(encoder.get("program", ""))
+            schedule = item["schedule"]
+            if not program:
+                record.update(result="failed", text="The app could not open it: OBS was not found on this computer. "
+                                                    "Choose the OBS program with Change on the Destinations page.")
+            else:
+                try:
+                    obslaunch.launch(program, schedule.get("obs_profile", ""), schedule.get("obs_collection", ""))
+                    record.update(result="opened", text=f"The app opened OBS at {titles.format_time(now, clock)}.")
+                except OSError as exc:
+                    record.update(result="failed", text=f"The app could not open OBS ({exc.strerror or exc}).")
+        obs_state(store).setdefault(obs_key(item), {"round": -1, "told": []})["opened"] = record
+        done.append(record)
+    if done:
+        store.save()
+    return done
+
+
 def obs_summary(result):
     """One line about a check, for the Upcoming page."""
     if result["problems"]:
@@ -469,6 +537,8 @@ def obs_record(store, item, result, round_=None, now=None):
     old = state.get(obs_key(item), {})
     state[obs_key(item)] = {**result, "round": old.get("round", -1) if round_ is None else round_,
                             "told": old.get("told", [])}
+    if "opened" in old:
+        state[obs_key(item)]["opened"] = old["opened"]
     cutoff = ((now or datetime.now()) - timedelta(days=2)).strftime("%Y-%m-%d")
     for key in [k for k in state if k.split("|")[-1] < cutoff]:
         del state[key]

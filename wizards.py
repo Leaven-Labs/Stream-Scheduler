@@ -4,6 +4,8 @@ this or another computer, and setting up a way to be told (email, Discord, Slack
 Each guide explains what to click on the platform's own pages, says why each step is safe, and ends
 by saving the sign-in in the system keychain (vault.py). Nothing is saved before the last step.
 """
+import sys
+
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -13,6 +15,7 @@ import facebook
 import net
 import notify
 import obs
+import obslaunch
 import ui
 import webhook
 import wordpress
@@ -1017,6 +1020,11 @@ class ObsWizard(Wizard):
                                      "Read the port and password from OBS's own settings on this computer")
         self.fill_state = ui.label("", "sub", wrap=True)
         self.fill_row = action_row(self.fill_button, self.fill_state)
+        self.program = (existing or {}).get("program", "")
+        self.program_button = ui.button("Choose ...", "", self.choose_program,
+                                        "Choose the OBS program, if it is not where OBS installs itself")
+        self.program_state = ui.label("", "sub", wrap=True)
+        self.program_row = action_row(self.program_button, self.program_state)
         self.test_button = ui.button("Connect to OBS", "primary", self.test)
         self.test_state = ui.label("", "sub", wrap=True)
         self.fill_note = ui.rich("<b>Fill in</b> reads the port and password from OBS's own settings on this "
@@ -1024,7 +1032,7 @@ class ObsWizard(Wizard):
         self.add_step("Connect", "Connect to OBS", [
             field_grid([("OBS is on", self.place), ("Name in this app", self.name), ("Computer", self.host),
                         ("Port", self.port), ("Password", self.password)]),
-            self.fill_row, action_row(self.test_button, self.test_state), self.fill_note,
+            self.fill_row, action_row(self.test_button, self.test_state), self.fill_note, self.program_row,
             ui.callout("Stream Scheduler in Docker",
                        "Choose <b>Another computer on the network</b> and type the address of the computer "
                        "with OBS: the container is a computer of its own.")],
@@ -1054,10 +1062,30 @@ class ObsWizard(Wizard):
             self.host.setPlaceholderText("Its name or address, such as 192.168.1.20")
         self.fill_row.setVisible(local)
         self.fill_note.setVisible(local)
+        self.program_row.setVisible(local)
+        self.show_program()
         names = ("OBS on this computer", "OBS on another computer", "OBS")
         if self.name.text().strip() in names or not self.name.text().strip():
             self.name.setText(names[0] if local else names[1])
         self.changed()
+
+    def show_program(self):
+        found = obslaunch.find(self.program)
+        if found:
+            where = "chosen by you" if self.program else "found"
+            self.program_state.setText(f"OBS program ({where}): {found.replace('flatpak:', 'Flatpak ')}. "
+                                       "Schedules can open it before a service.")
+        else:
+            self.program_state.setText("The OBS program was not found where OBS installs itself. Choose it, so "
+                                       "schedules can open OBS before a service (optional).")
+
+    def choose_program(self):
+        from PySide6.QtWidgets import QFileDialog
+        kind = {"win32": "OBS (obs64.exe)", "darwin": "OBS (OBS.app)"}.get(sys.platform, "OBS (obs)")
+        path, _ = QFileDialog.getOpenFileName(self, "Choose the OBS program", self.program or "", f"{kind} (*)")
+        if path:
+            self.program = path
+            self.show_program()
 
     def changed(self):
         self.found = None
@@ -1125,6 +1153,8 @@ class ObsWizard(Wizard):
         password = self.password.text()
         encoder = {"id": new_id(), "kind": "obs", "name": self.name.text().strip() or "OBS", "host": host,
                    "port": port, "local": self.local(), "auth": bool(password)}
+        if self.local() and self.program:
+            encoder["program"] = self.program
         if password:
             try:
                 self.vault.set(encoder["id"], "password", password)

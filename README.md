@@ -38,7 +38,9 @@ stream already in the title, shows the coming stream on your website, and tells 
   streaming PC on the same network, and choose it in a schedule. By default 55 and 20 minutes before
   each stream, the app sees whether OBS is open and set to the stream key the YouTube stream is bound
   to, and alerts you if not (and again when it is fixed). *Check OBS* on a stream, or *Check now*,
-  looks at once. The app only looks at OBS; it never goes live or changes a setting.
+  looks at once. On the computer where the app runs, it can also **open OBS** an hour before (with
+  the profile and scene collection you choose) if OBS is not open yet. The app never goes live, closes
+  OBS or changes a setting in it.
 - **Guided setup.** A step-by-step guide for every destination and every kind of alert explains what
   to click on the other side, and what each step means for your account's safety.
 - **Backup and new versions.** Save everything but the sign-ins to one file and restore it, also on
@@ -163,7 +165,7 @@ Python and Qt (PySide6), standard library for HTTPS.
 | `engine.py` | which streams are coming, and creating the ones that are due |
 | `recurrence.py`, `titles.py` | when streams are; filling `{date}` into titles |
 | `youtube.py`, `wix.py`, `wordpress.py`, `webhook.py`, `net.py` | the platforms' APIs (`facebook.py` is kept but switched off) |
-| `obs.py` | OBS's remote control (obs-websocket 5): a small WebSocket client, read-only requests |
+| `obs.py`, `obslaunch.py` | OBS's remote control (obs-websocket 5): a small WebSocket client, read-only requests; finding and opening OBS on this computer |
 | `notify.py`, `updates.py` | alerts by email, Discord, Slack and Pushover; the look for a newer version |
 | `vault.py`, `store.py` | secrets in the keychain; everything else in `config.json` |
 | `ui.py`, `mainwindow.py`, `dialogs.py`, `wizards.py` | the look, the pages, the dialogs, the setup guides |

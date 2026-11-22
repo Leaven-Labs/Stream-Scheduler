@@ -235,6 +235,9 @@ class UpcomingPage(Page):
             head = "" if encoder["name"] in summary else f"OBS on {encoder['name']}: "
             text = f"{head}{'✓  ' if found['ok'] else ''}{summary}  (checked {at})"
             return ui.label(text, "good" if found["ok"] else "error", wrap=True)
+        if found and "opened" in found:
+            return ui.label(f"OBS on {encoder['name']}: {found['opened']['text']}",
+                            "error" if found["opened"]["result"] == "failed" else "small", wrap=True)
         first = engine.obs_first_check(item)
         return ui.label(f"OBS on {encoder['name']}: checked from {short_day(first, self.clock)}", "small", wrap=True)
 
@@ -1072,6 +1075,10 @@ class MainWindow(QMainWindow):
         """A round of the app's own work: the scheduling, then telling about it, then (once a day) a look
         for a newer version. Runs off the window's thread."""
         entries = fn(self.store, self.vault)
+        try:
+            engine.open_obs(self.store, self.vault)   # before the checks, which then find it open
+        except Exception:   # never in the way of the scheduling
+            pass
         notify.after(self.store, self.vault, entries)
         try:
             updates.check(self.store)

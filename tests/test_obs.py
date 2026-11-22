@@ -18,6 +18,7 @@ from datetime import datetime
 import engine
 import notify
 import obs
+import obslaunch
 from store import Store
 from vault import MemoryVault
 
@@ -394,6 +395,78 @@ class ObsAlertTest(ObsBase):
         notify.after(self.store, self.vault, [], at(7, 40))
         self.assertEqual(self.told(), [])
         self.assertFalse(self.store.data["obs"]["s1|2027-11-14"]["ok"])   # still shown in the app
+
+
+class ObsLaunchTest(unittest.TestCase):
+    def test_finds_obs_on_windows(self):
+        env = {"ProgramFiles": r"D:\Apps"}
+        there = {os.path.join(r"D:\Apps", "obs-studio", obslaunch.WINDOWS_EXE)}
+        self.assertEqual(obslaunch.find(exists=there.__contains__, platform="win32", env=env, registry=""),
+                         os.path.join(r"D:\Apps", "obs-studio", obslaunch.WINDOWS_EXE))
+        from_registry = os.path.join(r"E:\OBS", obslaunch.WINDOWS_EXE)
+        self.assertEqual(obslaunch.find(exists=lambda p: True, platform="win32", env=env, registry=r"E:\OBS"),
+                         from_registry)
+        self.assertEqual(obslaunch.find(exists=lambda p: False, platform="win32", env=env, registry=""), "")
+        self.assertEqual(obslaunch.find("C:/mine/obs64.exe", exists=lambda p: True), "C:/mine/obs64.exe")
+        self.assertEqual(obslaunch.find("C:/gone/obs64.exe", exists=lambda p: False), "")
+
+    def test_command_never_goes_live(self):
+        argv, folder = obslaunch.command("/opt/obs/bin/64bit/obs64.exe", "Sunday", "Main", platform="win32")
+        self.assertEqual(argv, ["/opt/obs/bin/64bit/obs64.exe", "--disable-shutdown-check", "--profile", "Sunday",
+                                "--collection", "Main"])
+        self.assertEqual(folder, "/opt/obs/bin/64bit")   # OBS must start in its own folder
+        self.assertEqual(obslaunch.command("/Applications/OBS.app", platform="darwin")[0],
+                         ["open", "-a", "/Applications/OBS.app", "--args", "--disable-shutdown-check"])
+        self.assertEqual(obslaunch.command("flatpak:com.obsproject.Studio", platform="linux")[0][:3],
+                         ["flatpak", "run", "com.obsproject.Studio"])
+        for platform in ("win32", "darwin", "linux"):
+            self.assertNotIn("--startstreaming", obslaunch.command("obs", "p", "c", platform=platform)[0])
+
+
+class ObsOpenTest(ObsBase):
+    def setUp(self):
+        super().setUp()
+        self.encoder["local"] = True
+        self.store.schedules[0].update(obs_profile="Sunday", obs_collection="Main")
+        self.launched, self.is_running = [], False
+        for name, fake in (("launch", lambda *a: self.launched.append(a)),
+                           ("running", lambda: self.is_running),
+                           ("find", lambda chosen="": chosen or "C:/obs/bin/64bit/obs64.exe")):
+            real = getattr(obslaunch, name)
+            setattr(obslaunch, name, fake)
+            self.addCleanup(setattr, obslaunch, name, real)
+
+    def test_opened_once_an_hour_before(self):
+        self.assertEqual(engine.open_obs(self.store, self.vault, at(6, 55)), [])
+        done = engine.open_obs(self.store, self.vault, at(7, 0))
+        self.assertEqual(self.launched, [("C:/obs/bin/64bit/obs64.exe", "Sunday", "Main")])
+        self.assertEqual(done[0]["result"], "opened")
+        self.assertEqual(engine.open_obs(self.store, self.vault, at(7, 1)), [])   # never a second time
+        self.assertEqual(len(self.launched), 1)
+        # the check keeps what happened, and says it when OBS still does not answer
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        record = engine.obs_record(self.store, self.item(at(7, 5)), result, 0, at(7, 5))
+        self.assertEqual(record["opened"]["result"], "opened")
+        self.assertIn("opened OBS at 7:00 AM, but it does not answer", result["problems"][0]["text"])
+
+    def test_not_opened_when_running_off_or_elsewhere(self):
+        self.is_running = True
+        self.assertEqual(engine.open_obs(self.store, self.vault, at(7, 0))[0]["result"], "running")
+        self.store.data["obs"] = {}
+        self.is_running = False
+        self.store.schedules[0]["obs_open"] = 0
+        self.assertEqual(engine.open_obs(self.store, self.vault, at(7, 30)), [])
+        self.store.schedules[0]["obs_open"] = 60
+        self.encoder["local"] = False   # OBS on another computer is never opened from here
+        self.assertEqual(engine.open_obs(self.store, self.vault, at(7, 30)), [])
+        self.assertEqual(self.launched, [])
+
+    def test_not_found_is_said(self):
+        obslaunch.find = lambda chosen="": ""
+        done = engine.open_obs(self.store, self.vault, at(7, 0))
+        self.assertEqual(done[0]["result"], "failed")
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertIn("OBS was not found on this computer", result["problems"][0]["text"])
 
 
 if __name__ == "__main__":
