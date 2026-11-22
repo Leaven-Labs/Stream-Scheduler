@@ -236,9 +236,12 @@ def verify(store, vault, now=None):
 
 
 def check(store, vault, now=None):
-    """The "Check now" button: verify what was created, then create what is due or was found missing."""
+    """The "Check now" button: verify what was created, then create what is due or was found missing,
+    then look at OBS for the streams of the next three hours."""
     verify(store, vault, now)
-    return run_due(store, vault, now)
+    done = run_due(store, vault, now)
+    obs_check_now(store, vault, now)
+    return done
 
 
 def create_now(store, vault, item, now=None):
@@ -327,6 +330,163 @@ def encoder_password(vault, encoder):
 def test_encoder(vault, encoder):
     """Connect to an encoder's OBS. Returns a line about it: its version, profile and scene collection."""
     return obs.describe(obs.info(encoder["host"], encoder["port"], encoder_password(vault, encoder)))
+
+
+# ---- OBS before a service ------------------------------------------------------------------------
+# A schedule can name an encoder (OBS on this or another computer). Before each of its streams the app
+# looks at OBS twice, by default 55 and 20 minutes before the start: is OBS open, and does it stream to
+# the key the YouTube broadcast is bound to? It only looks; what to do about it stays with a person.
+
+OBS_CHECKS = (55, 20)          # minutes before the start
+OBS_MANUAL = timedelta(hours=3)  # "Check now" also looks at OBS for the streams of the next three hours
+
+
+def obs_rounds(schedule):
+    """The minutes before the start at which a schedule's OBS is looked at, earliest first."""
+    found = []
+    for m in schedule.get("obs_checks") or OBS_CHECKS:
+        try:
+            if int(m) > 0 and int(m) not in found:
+                found.append(int(m))
+        except (TypeError, ValueError):
+            continue
+    return sorted(found, reverse=True)
+
+
+def obs_state(store):
+    """What was found at each stream's checks, by "<schedule id>|<date>"."""
+    return store.data.setdefault("obs", {})
+
+
+def obs_key(item):
+    return f"{item['schedule']['id']}|{item['date']}"
+
+
+def obs_due(store, now=None):
+    """[(item, encoder, round)] of the streams whose OBS is to be looked at now. Each round is done once;
+    when the computer was off at an earlier round's time, only the latest round that has come is done."""
+    now = now or datetime.now()
+    due = []
+    for item in upcoming(store, now, limit=1000):
+        encoder = store.encoder(item["schedule"].get("encoder_id"))
+        if not encoder or item["skipped"]:
+            continue
+        rounds = obs_rounds(item["schedule"])
+        come = [i for i, m in enumerate(rounds) if now >= item["when"] - timedelta(minutes=m)]
+        if not come:
+            continue
+        done = obs_state(store).get(obs_key(item), {}).get("round", -1)
+        if come[-1] > done:
+            due.append((item, encoder, come[-1]))
+    return due
+
+
+def obs_first_check(item):
+    """When the first look at OBS is, for a stream whose schedule names an encoder."""
+    rounds = obs_rounds(item["schedule"])
+    return item["when"] - timedelta(minutes=rounds[0]) if rounds else None
+
+
+def _key_name(keys, key):
+    found = next((k for k in keys if k["key"] and k["key"] == key), None)
+    return f"the stream key “{found['title']}”" if found else "a stream key that is not on this channel"
+
+
+def obs_check(store, vault, item, encoder, now=None):
+    """Look at OBS for one stream. Returns {"at", "ok", "problems": [{"code", "text"}], "notes": [...]}.
+    Codes: closed, unreachable, password, old, not_obs (check 1); key (check 2). OBS's stream key is
+    compared here and dropped."""
+    now = now or datetime.now()
+    result = {"at": now.strftime("%Y-%m-%dT%H:%M:%S"), "encoder": encoder["name"], "problems": [], "notes": []}
+    where = encoder["name"]
+    try:
+        with obs.connect(encoder["host"], encoder["port"], encoder_password(vault, encoder)) as c:
+            c.request("GetVersion")
+            answer = c.request("GetStreamServiceSettings")
+    except obs.ObsError as exc:
+        code = exc.reason if exc.reason in ("closed", "unreachable", "password", "old", "not_obs") else "closed"
+        text = {"closed": f"OBS isn't open on {where}, or its WebSocket server is switched off.",
+                "unreachable": f"{where} could not be reached on the network. Is it switched on?"}.get(code, str(exc))
+        result["problems"].append({"code": code, "text": text})
+        result["ok"] = False
+        return result
+    except vault_module.VaultError as exc:
+        result["problems"].append({"code": "password", "text": f"The OBS password of {where} is missing: {exc}"})
+        result["ok"] = False
+        return result
+    settings = answer.get("streamServiceSettings") or {}
+    obs_key_now = settings.get("key", "")
+    service = f"{settings.get('service', '')} {settings.get('server', '')}".lower()
+    broadcasts = [(d, e) for d, e in item["targets"] if d["kind"] == "youtube" and e and e["status"] == "created"
+                  and e.get("remote_id")]
+    if not broadcasts:
+        result["notes"].append("The stream key is checked once the YouTube stream exists.")
+    expected, named = [], ""
+    for dest, entry in broadcasts:
+        try:
+            token = youtube.access_token(dest["client_id"], vault.get(dest["id"], "client_secret"),
+                                         vault.get(dest["id"], "refresh_token"))
+            bound = youtube.bound_stream_id(token, entry["remote_id"])
+            if not bound:
+                result["notes"].append(f"{dest['name']}: the YouTube stream is not bound to a stream key yet.")
+                continue
+            keys = youtube.stream_keys(token)
+        except (net.ApiError, vault_module.VaultError) as exc:
+            result["notes"].append(f"The stream key could not be checked: YouTube did not answer ({exc}).")
+            continue
+        mine = next((k for k in keys if k["id"] == bound), None)
+        if not (mine and mine["key"]):
+            result["notes"].append(f"{dest['name']}: the stream key of the YouTube stream was not found.")
+        else:
+            expected.append(mine)
+            named = named or (_key_name(keys, obs_key_now) if obs_key_now else "")
+    if expected:
+        if not obs_key_now:
+            if "youtube" in service:
+                result["notes"].append("OBS uses its own YouTube sign-in (Connect account) instead of a stream key, "
+                                       "so the key could not be checked.")
+            else:
+                result["problems"].append({"code": "key", "text": f"OBS on {where} has no stream key set."})
+        elif not any(k["key"] == obs_key_now for k in expected):
+            target = named if "youtube" in service or not service.strip() else "a service other than YouTube"
+            want = " or ".join(f"“{k['title']}”" for k in expected)
+            result["problems"].append({"code": "key", "text": f"OBS on {where} is set to {target}, but "
+                                       f"{item['schedule']['name']} is bound to the stream key {want}."})
+    result["ok"] = not result["problems"]
+    return result
+
+
+def obs_summary(result):
+    """One line about a check, for the Upcoming page."""
+    if result["problems"]:
+        return " ".join(p["text"] for p in result["problems"])
+    return "Ready." + "".join(f" {n}" for n in result["notes"])
+
+
+def obs_record(store, item, result, round_=None, now=None):
+    """Keep what a check found (and which round it was), and forget the checks of past days."""
+    state = obs_state(store)
+    old = state.get(obs_key(item), {})
+    state[obs_key(item)] = {**result, "round": old.get("round", -1) if round_ is None else round_,
+                            "told": old.get("told", [])}
+    cutoff = ((now or datetime.now()) - timedelta(days=2)).strftime("%Y-%m-%d")
+    for key in [k for k in state if k.split("|")[-1] < cutoff]:
+        del state[key]
+    return state[obs_key(item)]
+
+
+def obs_check_now(store, vault, now=None, item=None):
+    """The user's look at OBS (a stream's "Check OBS", or Check now): every stream with an encoder in the
+    next three hours, or the one given. Records what was found; sends no alert. Returns the results."""
+    now = now or datetime.now()
+    items = [item] if item else [i for i in upcoming(store, now, limit=1000) if i["when"] - now <= OBS_MANUAL]
+    done = []
+    for i in items:
+        encoder = store.encoder(i["schedule"].get("encoder_id"))
+        if encoder and not i["skipped"]:
+            done.append(obs_record(store, i, obs_check(store, vault, i, encoder, now), now=now))
+    store.save()
+    return done
 
 
 def preview(store, schedule, count=3, now=None):

@@ -5,6 +5,7 @@ What can be sent (each can be switched off):
   signin   a saved sign-in stopped working (asked once a day)
   summary  once a week: the streams of the coming seven days and whether each one is in place
   created  a stream was created, with its link
+  obs      before a service, OBS is not open or not set to the stream's key (and "ready now" once fixed)
 
 The channels' secrets (webhook addresses, the mail password, Pushover's keys) are in the keychain
 under the id "notify"; what is not secret is in config.json under "notify". A message that cannot be
@@ -24,7 +25,7 @@ from vault import NOTIFY
 CHANNELS = {"email": "Email", "discord": "Discord", "slack": "Slack", "pushover": "Pushover"}
 SECRETS = {"email": ["email_password"], "discord": ["discord_url"], "slack": ["slack_url"],
            "pushover": ["pushover_token", "pushover_user"]}
-EVENTS = {"failed": True, "signin": True, "summary": False, "created": False}
+EVENTS = {"failed": True, "signin": True, "summary": False, "created": False, "obs": True}
 HEALTH_EVERY = timedelta(hours=24)
 
 
@@ -271,11 +272,36 @@ def report_summary(store, vault, now):
         cfg["last_summary"] = stamp
 
 
+def report_obs(store, vault, now):
+    """Look at OBS before services, at the rounds engine.obs_due() says, and tell when it is not ready;
+    at a later round, again if it still is not, or that it is ready now if a problem was fixed."""
+    cfg = settings(store)
+    clock = store.settings.get("clock", "12")
+    for item, encoder, round_ in engine.obs_due(store, now):
+        told = engine.obs_state(store).get(engine.obs_key(item), {}).get("told", [])
+        result = engine.obs_check(store, vault, item, encoder, now)
+        record = engine.obs_record(store, item, result, round_, now)
+        store.save()
+        if not (cfg["events"]["obs"] and active(store)):
+            continue
+        minutes = max(1, round((item["when"] - now).total_seconds() / 60))
+        start = f"{item['title']} starts in {minutes} minutes ({titles.format_time(item['when'], clock)})"
+        if result["problems"]:
+            text = f"{start}.\n" + "\n".join(p["text"] for p in result["problems"])
+            if send(store, vault, "OBS is still not ready" if told else "OBS is not ready", text, urgent=True):
+                record["told"] = [p["code"] for p in result["problems"]]
+        elif told:
+            if send(store, vault, "OBS is ready now", f"{start}. OBS on {encoder['name']} is ready: the problem "
+                                                      "reported earlier is fixed."):
+                record["told"] = []
+
+
 def after(store, vault, entries, now=None):
     """What follows every round of work in the background: report, and look after the sign-ins."""
     now = now or datetime.now()
     for step in (lambda: report_entries(store, vault, entries), lambda: report_missed(store, vault, now),
-                 lambda: check_health(store, vault, now), lambda: report_summary(store, vault, now)):
+                 lambda: report_obs(store, vault, now), lambda: check_health(store, vault, now),
+                 lambda: report_summary(store, vault, now)):
         try:
             step()
         except Exception as exc:   # reporting must never stop the scheduling

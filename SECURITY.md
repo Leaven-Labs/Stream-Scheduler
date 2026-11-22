@@ -38,8 +38,9 @@
     stream or changes a setting. OBS's remote control is **not encrypted** (`ws://`, port 4455), so it
     is for your own network only: never forward that port on your router, and use a VPN such as
     Tailscale to reach OBS at another site. On this computer, the guide can read the port and password
-    from OBS's own settings file, only when you click *Fill in*. The stream key OBS reports is compared
-    and dropped, never shown, logged or saved.
+    from OBS's own settings file, only when you click *Fill in*. To check the key, the app asks YouTube
+    for the channel's stream keys (`liveStreams`, `part=cdn`) and OBS for its own; they are compared
+    in memory and dropped, never shown, logged or saved. Alerts name a key by its YouTube title only.
 - **What an alert says:** the stream's title, time and link, and the reason something failed. It
   goes only to the services you set up on the Alerts page.
 - **A backup file holds no secrets**: the same as the settings file, in a place you choose.

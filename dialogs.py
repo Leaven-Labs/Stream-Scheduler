@@ -252,6 +252,40 @@ class ScheduleDialog(QDialog):
         else:
             dest_row.addStretch(1)
 
+        self.encoder = QComboBox()
+        self.encoder.addItem("Don't check OBS", "")
+        for e in store.encoders:
+            self.encoder.addItem(e["name"], e["id"])
+        self.encoder.setCurrentIndex(max(0, self.encoder.findData(s.get("encoder_id", ""))))
+        rounds = (engine.obs_rounds(s) + [0])[:2] if s.get("obs_checks") else list(engine.OBS_CHECKS)
+        self.obs_first, self.obs_second = QSpinBox(), QSpinBox()
+        for spin, value in ((self.obs_first, rounds[0]), (self.obs_second, rounds[1])):
+            spin.setRange(0, 600)
+            spin.setValue(value)
+            spin.setFixedWidth(64)
+            pad(spin)
+        self.obs_second.setSpecialValueText("off")
+        self.obs_first.setRange(1, 600)
+        obs_box = QVBoxLayout()
+        obs_box.setSpacing(6)
+        obs_box.addWidget(self.encoder, 0, Qt.AlignLeft)
+        self.obs_when = QWidget()
+        when_row = QHBoxLayout(self.obs_when)
+        when_row.setContentsMargins(0, 0, 0, 0)
+        when_row.setSpacing(8)
+        for w in (ui.label("Check"), self.obs_first, ui.label("and"), self.obs_second,
+                  ui.label("minutes before the start")):
+            when_row.addWidget(w)
+        when_row.addStretch(1)
+        obs_box.addWidget(self.obs_when)
+        obs_box.addWidget(ui.label("Is OBS open, and set to the stream key of this schedule's YouTube stream? You "
+                                   "are told on the Alerts page's channels if not. The app never changes OBS."
+                                   if store.encoders else "To check OBS before each stream, add OBS on the "
+                                   "Destinations page.", "small", wrap=True))
+        self.encoder.currentIndexChanged.connect(lambda *_: self.obs_when.setVisible(bool(self.encoder.currentData())))
+        self.obs_when.setVisible(bool(self.encoder.currentData()))
+        self.encoder.setEnabled(bool(store.encoders))
+
         title_box = QVBoxLayout()
         title_box.setSpacing(5)
         title_box.addWidget(self.title)
@@ -259,7 +293,7 @@ class ScheduleDialog(QDialog):
         rows = [("Name", self.name), ("Repeats", when_box), ("Stream time", self.time),
                 ("Create it", made), ("Title", title_box), ("Date written as", self.date_format),
                 ("Series", self.series), ("Description", self.description), ("Thumbnail", self.thumbnail),
-                ("On YouTube", tube), ("Send to", dest_row)]
+                ("On YouTube", tube), ("Send to", dest_row), ("OBS", obs_box)]
         for i, (text, thing) in enumerate(rows):
             grid.addWidget(ui.label(text, "strong"), i, 0, Qt.AlignTop)
             if isinstance(thing, QWidget):
@@ -301,6 +335,11 @@ class ScheduleDialog(QDialog):
                  privacy=self.privacy.currentData(), playlist=self.playlist.text().strip(),
                  starts=self.starts.value(), until=self.until.value())
         s.pop("once", None)
+        s.pop("encoder_id", None)
+        s.pop("obs_checks", None)
+        if self.encoder.currentData():
+            s["encoder_id"] = self.encoder.currentData()
+            s["obs_checks"] = [m for m in (self.obs_first.value(), self.obs_second.value()) if m]
         if self.repeat.buttons["once"].isChecked():
             s["once"] = self.date.date().toString("yyyy-MM-dd")
             s.update(starts="", until="")

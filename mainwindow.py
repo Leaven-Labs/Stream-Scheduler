@@ -111,7 +111,8 @@ class UpcomingPage(Page):
                          "What your schedules will create next. Each stream is created by itself.")
         self.check_button = ui.button("Check now", clicked=window.check_all,
                                       tip="See that every scheduled stream is still on YouTube and on the website, "
-                                          "put back what is missing, and create what is due")
+                                          "put back what is missing, create what is due, and look at OBS for "
+                                          "the streams of the next three hours")
         self.actions.addWidget(self.check_button)
 
     def fill(self):
@@ -196,6 +197,9 @@ class UpcomingPage(Page):
                     entry["status"] == "failed" or entry.get("note")):
                 mid.addWidget(ui.label(f"{KIND_NAMES[dest['kind']]}: {entry['note']}",
                                        "error" if entry["status"] == "failed" else "small", wrap=True))
+        encoder = self.store.encoder(item["schedule"].get("encoder_id"))
+        if encoder and not skipped:
+            mid.addWidget(self.obs_line(item, encoder))
         row.addLayout(mid, 1)
         buttons = QVBoxLayout()
         buttons.setSpacing(6)
@@ -209,6 +213,10 @@ class UpcomingPage(Page):
                                             "is missing"))
             buttons.addWidget(ui.button("Edit", "mini", lambda: self.edit(item),
                                         "Another title, description or time for this one stream"))
+        if encoder and not skipped:
+            buttons.addWidget(ui.button("Check OBS", "mini", lambda: self.check_obs(item),
+                                        f"See now whether OBS on {encoder['name']} is open and set to this "
+                                        "stream's key. No alert is sent."))
         on_youtube = any(e and e["status"] == "created" and d["kind"] == "youtube" for d, e in item["targets"])
         if on_youtube and not skipped:
             buttons.addWidget(ui.button("Cancel", "mini", lambda: self.cancel(item),
@@ -218,6 +226,20 @@ class UpcomingPage(Page):
         buttons.addStretch(1)
         row.addLayout(buttons)
         return card
+
+    def obs_line(self, item, encoder):
+        found = engine.obs_state(self.store).get(engine.obs_key(item))
+        if found and "ok" in found:
+            at = titles.format_time(datetime.fromisoformat(found["at"]), self.clock)
+            summary = engine.obs_summary(found)
+            head = "" if encoder["name"] in summary else f"OBS on {encoder['name']}: "
+            text = f"{head}{'✓  ' if found['ok'] else ''}{summary}  (checked {at})"
+            return ui.label(text, "good" if found["ok"] else "error", wrap=True)
+        first = engine.obs_first_check(item)
+        return ui.label(f"OBS on {encoder['name']}: checked from {short_day(first, self.clock)}", "small", wrap=True)
+
+    def check_obs(self, item):
+        self.window_.work(lambda: engine.obs_check_now(self.store, self.vault, item=item) and [], loud=True)
 
     def override(self, item):
         return item["schedule"].setdefault("overrides", {}).setdefault(item["date"], {})
@@ -671,6 +693,10 @@ class AlertsPage(Page):
               ("summary", "Weekly summary",
                "The streams of the coming seven days and whether each one is in place. Silence then means "
                "something is wrong."),
+              ("obs", "OBS is not ready",
+               "Before a service whose schedule names an OBS: OBS is not open, or not set to the stream key the "
+               "YouTube stream is bound to. Told again at the later check if it still is not, and told when it "
+               "is fixed."),
               ("created", "A stream was scheduled", "Each new stream with its link, for example to share it.")]
 
     def __init__(self, window):

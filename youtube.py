@@ -141,6 +141,26 @@ def streams(token):
             if s.get("contentDetails", {}).get("isReusable", True)]
 
 
+def stream_keys(token):
+    """The channel's stream keys with their secret part: [{"id", "title", "key"}]. Only for comparing
+    with the key in OBS: a key is never shown, logged or saved."""
+    found, params = [], {"part": "snippet,cdn", "mine": "true", "maxResults": 50}
+    while True:
+        answer = net.request("GET", f"{API}/liveStreams", params, token=token)
+        found += [{"id": s["id"], "title": s.get("snippet", {}).get("title", ""),
+                   "key": s.get("cdn", {}).get("ingestionInfo", {}).get("streamName", "")}
+                  for s in answer.get("items", [])]
+        if not answer.get("nextPageToken"):
+            return found
+        params = {**params, "pageToken": answer["nextPageToken"]}
+
+
+def bound_stream_id(token, broadcast_id):
+    """The id of the stream key a broadcast is bound to ("" when none), or None when the broadcast is gone."""
+    b = broadcast(token, broadcast_id)
+    return None if b is None else b.get("contentDetails", {}).get("boundStreamId", "")
+
+
 def create_broadcast(token, title, description, start_utc, options):
     """Schedule a broadcast. Returns {"id", "url", "note"}; note says what could not be done."""
     body = {
@@ -235,7 +255,7 @@ def dress(token, video_id, title, description, options):
 
 def broadcast(token, broadcast_id):
     """A broadcast of the channel by its id, or None when it is not there (deleted on YouTube)."""
-    items = net.request("GET", f"{API}/liveBroadcasts", {"part": "snippet,status", "id": broadcast_id},
+    items = net.request("GET", f"{API}/liveBroadcasts", {"part": "snippet,status,contentDetails", "id": broadcast_id},
                         token=token).get("items")
     return items[0] if items else None
 

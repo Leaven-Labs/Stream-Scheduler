@@ -34,10 +34,11 @@ stream already in the title, shows the coming stream on your website, and tells 
 - **Your website follows along.** After a stream is created on YouTube, a page of your Wix or
   WordPress site is pointed at it, or a web address of your choice is told (a webhook, for Zapier,
   Make and others).
-- **OBS on this or another computer.** Connect OBS Studio (28 or newer), on this computer or a second
-  streaming PC on the same network, through its built-in remote control. *Test* shows the OBS version,
-  profile and scene collection. The app only looks at OBS; it never goes live or changes a setting.
-  Checking OBS before each service comes next.
+- **OBS checked before each service.** Connect OBS Studio (28 or newer), on this computer or a second
+  streaming PC on the same network, and choose it in a schedule. By default 55 and 20 minutes before
+  each stream, the app sees whether OBS is open and set to the stream key the YouTube stream is bound
+  to, and alerts you if not (and again when it is fixed). *Check OBS* on a stream, or *Check now*,
+  looks at once. The app only looks at OBS; it never goes live or changes a setting.
 - **Guided setup.** A step-by-step guide for every destination and every kind of alert explains what
   to click on the other side, and what each step means for your account's safety.
 - **Backup and new versions.** Save everything but the sign-ins to one file and restore it, also on
@@ -125,7 +126,8 @@ stream is still more than 10 minutes away. A stream is never created twice.
   address, where an automation service (Zapier, Make) can update Squarespace or anything else.
   Squarespace itself offers no way for an app to change a page.
 - **OBS.** Switch on Tools → WebSocket Server Settings in OBS (28 or newer) and keep authentication
-  on. For OBS on another computer, Windows must let OBS use the private network (its firewall asks
+  on. The key check needs OBS to use a stream key: if OBS is signed in to YouTube with *Connect
+  account*, the app says the key could not be checked. For OBS on another computer, Windows must let OBS use the private network (its firewall asks
   once). The connection is not encrypted: keep it on your own network and never forward port 4455.
 - **Thumbnails.** YouTube accepts custom thumbnails only from channels verified by phone
   (youtube.com/verify): JPG or PNG, at most 2 MB.

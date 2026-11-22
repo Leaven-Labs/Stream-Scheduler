@@ -49,7 +49,7 @@ def fill(store, vault, now=None):
         {"id": "demo-s1", "name": "Sunday Service", "enabled": True, "weekdays": [6], "time": "08:00",
          "lead_days": 1, "create_time": "09:00", "title": "Sunday Service - {date}",
          "description": "Join us live this {weekday} at {time}.", "date_format": "long",
-         "destinations": ["demo-yt", "demo-fb"], "overrides": {}},
+         "destinations": ["demo-yt", "demo-fb"], "overrides": {}, "encoder_id": "demo-obs1", "obs_checks": [55, 20]},
         {"id": "demo-s2", "name": "Lent Evening Prayer", "enabled": True, "weekdays": [2], "time": "19:00",
          "lead_days": 2, "create_time": "12:00", "title": "{series}, week {number} | {month} {day}",
          "series": "Lent", "starts": first_lent.strftime("%Y-%m-%d"),
@@ -73,4 +73,9 @@ def fill(store, vault, now=None):
             "status": "created" if yt else "failed", "remote_id": "abc" if yt else "",
             "url": "https://www.youtube.com/watch?v=abc" if yt else "",
             "note": "" if yt else "Wix refused the API key for this site. Check the key and the Site ID."})
+    engine.obs_record(store, first, {"at": (first["when"] - timedelta(minutes=55)).strftime("%Y-%m-%dT%H:%M:%S"),
+                                     "encoder": "Traditional PC", "ok": False, "notes": [],
+                                     "problems": [{"code": "key", "text": "OBS on Traditional PC is set to the "
+                                                   "stream key “Backup”, but Sunday Service is bound to the stream "
+                                                   "key “Default stream key”."}]}, 0, now)
     vault.set("demo-yt", "client_secret", "x")

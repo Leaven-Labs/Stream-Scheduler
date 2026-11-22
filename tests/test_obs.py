@@ -13,10 +13,15 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from datetime import datetime
+
 import engine
+import notify
 import obs
 from store import Store
 from vault import MemoryVault
+
+import test_core as core
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -236,6 +241,159 @@ class ObsTest(unittest.TestCase):
             with open(path, "w") as fh:
                 json.dump({"destinations": [], "schedules": [], "history": []}, fh)
             self.assertEqual(Store(path).encoders, [])
+
+
+SAT = datetime(2027, 11, 13, 9, 0)       # the Sunday stream of November 14, 8:00, is created now
+KEYS = {"items": [{"id": "key1", "snippet": {"title": "Main sanctuary"}, "cdn": {"ingestionInfo": {"streamName": "abcd-1234"}}},
+                  {"id": "key2", "snippet": {"title": "Backup"}, "cdn": {"ingestionInfo": {"streamName": "zzzz-9999"}}}]}
+YT = [("GET liveBroadcasts", 200, {"items": [{"id": "yt123", "snippet": {}, "contentDetails": {"boundStreamId": "key1"}}]}),
+      ("GET liveStreams", 200, KEYS)] + core.OK_ROUTES
+
+
+def at(hour, minute):
+    return datetime(2027, 11, 14, hour, minute)
+
+
+def free_port():
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+class ObsBase(core.Base):
+    def setUp(self):
+        super().setUp()
+        self.net.routes = YT
+        self.store.schedules[0].update(destinations=["yt"], encoder_id="e1")
+        self.encoder = {"id": "e1", "kind": "obs", "name": "P&W PC", "host": "127.0.0.1", "port": free_port(),
+                        "local": False, "auth": True}
+        self.store.encoders.append(self.encoder)
+        self.vault.set("e1", "password", "secret pw")
+
+    def obs_up(self, key="abcd-1234", service="YouTube - RTMPS"):
+        f = FakeObs(stream={"streamServiceType": "rtmp_common",
+                            "streamServiceSettings": {"service": service, "server": "auto", "key": key}})
+        self.addCleanup(f.stop)
+        self.encoder["port"] = f.port
+        return f
+
+    def item(self, now):
+        return engine.upcoming(self.store, now)[0]
+
+
+class ObsCheckTest(ObsBase):
+    def test_rounds_come_once_each(self):
+        due = lambda now: [(i["date"], r) for i, _, r in engine.obs_due(self.store, now)]
+        self.assertEqual(due(at(7, 0)), [])
+        self.assertEqual(due(at(7, 5)), [("2027-11-14", 0)])
+        engine.obs_record(self.store, self.item(at(7, 5)), {"at": "x", "ok": True, "problems": [], "notes": []}, 0)
+        self.assertEqual(due(at(7, 10)), [])
+        self.assertEqual(due(at(7, 40)), [("2027-11-14", 1)])
+        self.assertEqual(due(at(8, 0)), [])                     # it has started: no more checks
+        self.store.data["obs"] = {}
+        self.assertEqual(due(at(7, 45)), [("2027-11-14", 1)])   # the computer woke late: only the latest round
+        self.store.schedules[0]["obs_checks"] = [90]
+        self.assertEqual(due(at(6, 35)), [("2027-11-14", 0)])
+        self.store.schedules[0].pop("encoder_id")
+        self.assertEqual(due(at(7, 45)), [])
+
+    def test_key_matches(self):
+        self.obs_up()
+        engine.run_due(self.store, self.vault, SAT)
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertEqual((result["ok"], result["problems"], result["notes"]), (True, [], []))
+        self.assertEqual(engine.obs_summary(result), "Ready.")
+
+    def test_wrong_key_is_named_and_never_shown(self):
+        self.obs_up(key="zzzz-9999")
+        engine.run_due(self.store, self.vault, SAT)
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertEqual([p["code"] for p in result["problems"]], ["key"])
+        text = result["problems"][0]["text"]
+        self.assertIn("“Backup”", text)
+        self.assertIn("“Main sanctuary”", text)
+        self.assertNotIn("zzzz", json.dumps(result) + json.dumps(self.store.data))
+        self.assertNotIn("abcd", json.dumps(result) + json.dumps(self.store.data))
+        self.obs_up(key="other-key")
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertIn("a stream key that is not on this channel", result["problems"][0]["text"])
+        self.obs_up(key="other-key", service="Twitch")
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertIn("a service other than YouTube", result["problems"][0]["text"])
+
+    def test_obs_signed_in_to_youtube_and_no_broadcast_yet(self):
+        self.obs_up(key="")
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertTrue(result["ok"])
+        self.assertIn("once the YouTube stream exists", result["notes"][0])
+        engine.run_due(self.store, self.vault, SAT)
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertTrue(result["ok"])
+        self.assertIn("Connect account", result["notes"][0])
+
+    def test_obs_closed_and_wrong_password(self):
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertEqual([p["code"] for p in result["problems"]], ["closed"])
+        self.assertIn("OBS isn't open on P&W PC", result["problems"][0]["text"])
+        self.obs_up()
+        self.vault.set("e1", "password", "wrong")
+        result = engine.obs_check(self.store, self.vault, self.item(at(7, 5)), self.encoder, at(7, 5))
+        self.assertEqual([p["code"] for p in result["problems"]], ["password"])
+
+    def test_check_now_records_without_alerts(self):
+        self.obs_up()
+        done = engine.obs_check_now(self.store, self.vault, at(6, 0))
+        self.assertEqual(len(done), 1)
+        saved = Store(self.store.path).data["obs"]["s1|2027-11-14"]
+        self.assertEqual((saved["ok"], saved["round"]), (True, -1))   # the automatic rounds still come
+        self.assertEqual(engine.obs_check_now(self.store, self.vault, at(4, 0)), [])   # more than 3 hours ahead
+
+
+class ObsAlertTest(ObsBase):
+    def setUp(self):
+        super().setUp()
+        cfg = notify.settings(self.store)
+        cfg["channels"] = {"discord": {"on": True}}
+        cfg["last_health"] = at(7, 0).strftime("%Y-%m-%dT%H:%M:%S")
+        self.vault.set(notify.NOTIFY, "discord_url", "https://discord.com/api/webhooks/1/SECRET-D")
+        self.net.routes = [("discord.com", 204, {})] + YT
+        engine.run_due(self.store, self.vault, SAT)
+
+    def told(self):
+        return [json.loads(c["data"])["content"] for c in self.net.calls if "discord.com" in c["url"]]
+
+    def test_not_ready_then_ready(self):
+        notify.after(self.store, self.vault, [], at(7, 5))
+        self.assertEqual(len(self.told()), 1)
+        self.assertIn("OBS is not ready", self.told()[0])
+        self.assertIn("starts in 55 minutes", self.told()[0])
+        self.assertIn("OBS isn't open on P&W PC", self.told()[0])
+        notify.after(self.store, self.vault, [], at(7, 10))
+        self.assertEqual(len(self.told()), 1)                   # nothing more until the next round
+        self.obs_up()
+        notify.after(self.store, self.vault, [], at(7, 40))
+        self.assertEqual(len(self.told()), 2)
+        self.assertIn("OBS is ready now", self.told()[1])
+        notify.after(self.store, self.vault, [], at(7, 50))
+        self.assertEqual(len(self.told()), 2)
+
+    def test_still_not_ready(self):
+        notify.after(self.store, self.vault, [], at(7, 5))
+        notify.after(self.store, self.vault, [], at(7, 40))
+        self.assertEqual(len(self.told()), 2)
+        self.assertIn("OBS is still not ready", self.told()[1])
+
+    def test_ready_is_silent_and_the_alert_can_be_switched_off(self):
+        self.obs_up()
+        notify.after(self.store, self.vault, [], at(7, 5))
+        self.assertEqual(self.told(), [])
+        self.encoder["port"] = free_port()
+        notify.settings(self.store)["events"]["obs"] = False
+        notify.after(self.store, self.vault, [], at(7, 40))
+        self.assertEqual(self.told(), [])
+        self.assertFalse(self.store.data["obs"]["s1|2027-11-14"]["ok"])   # still shown in the app
 
 
 if __name__ == "__main__":
