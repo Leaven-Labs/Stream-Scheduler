@@ -124,6 +124,11 @@ must be running to save sign-ins.
 - Change, skip or cancel a single stream; check and repair what was scheduled; preview before sending
 - Alerts by email, Discord, Slack and Pushover
 - YouTube, Wix, WordPress and webhooks, each with a step-by-step setup guide
-- A persistent YouTube stream key: your encoder keeps the same key every week
+- A persistent YouTube stream key: your encoder keeps the same key every week; starting and ending
+  automatically with OBS, per channel or per schedule
+- OBS on this or a second computer: opened and checked before each service (open, right stream key),
+  with an alert when it is not ready; the app never goes live for you
+- On Windows, optionally: automatic sign-in for a streaming account, locked straight away, and waking
+  from sleep before streams
 - Sign-ins kept in the system keychain
 - Tray, start at login, catch-up after the computer was off, backup and restore, a notice of new versions
