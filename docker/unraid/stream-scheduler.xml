@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>stream-scheduler</Name>
+  <Repository>ghcr.io/leaven-labs/stream-scheduler:latest</Repository>
+  <Registry>https://github.com/Leaven-Labs/Stream-Scheduler/pkgs/container/stream-scheduler</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Leaven-Labs/Stream-Scheduler/issues</Support>
+  <Project>https://github.com/Leaven-Labs/Stream-Scheduler</Project>
+  <Overview>Stream Scheduler schedules your weekly live streams on YouTube by itself, with the date of each stream already in the title, points your Wix or WordPress page at the coming stream, and tells you by email, Discord, Slack or Pushover when one needs you.[br][br]Open the WebUI to use the app. Required: a Keyring password, which encrypts the sign-ins kept in appdata (choose one and keep it), and a user name and password for the login page that guards the WebUI.</Overview>
+  <Category>MediaServer:Video Tools:</Category>
+  <WebUI>https://[IP]:[PORT:5800]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/Leaven-Labs/Stream-Scheduler/main/assets/logo-120.png</Icon>
+  <ExtraParams>--shm-size=1g</ExtraParams>
+  <Config Name="WebUI port" Target="5800" Default="5800" Mode="tcp" Description="The app in a web browser." Type="Port" Display="always" Required="true" Mask="false">5800</Config>
+  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/stream-scheduler" Mode="rw" Description="Settings, schedules, history and the encrypted sign-ins." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/stream-scheduler</Config>
+  <Config Name="Keyring password" Target="KEYRING_PASSWORD" Default="" Mode="" Description="Encrypts the sign-ins kept in appdata. Choose one now and keep it: with another password the saved sign-ins cannot be opened." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Web login user name" Target="WEB_AUTHENTICATION_USERNAME" Default="" Mode="" Description="The user name asked on the login page before the WebUI opens." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Web login password" Target="WEB_AUTHENTICATION_PASSWORD" Default="" Mode="" Description="The password asked on the login page before the WebUI opens." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Dark mode" Target="DARK_MODE" Default="0" Mode="" Description="1 for a dark frame around the app in the WebUI (the app's own theme is in its Settings)." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+  <Config Name="User ID" Target="USER_ID" Default="99" Mode="" Description="The user that owns the files in appdata (99 is nobody on Unraid)." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="Group ID" Target="GROUP_ID" Default="100" Mode="" Description="The group that owns the files in appdata (100 is users on Unraid)." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+</Container>

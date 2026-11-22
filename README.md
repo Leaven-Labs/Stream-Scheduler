@@ -68,6 +68,9 @@ click **Open Anyway** next to Stream Scheduler.
 
 **Linux.** Unpack and run `Stream Scheduler/Stream Scheduler`.
 
+**Docker, Unraid or another home server.** Run it on your server, all the time, and use it in a web
+browser: see **[docker/README.md](docker/README.md)** (there is an Unraid template).
+
 Or run it from source with [Python](https://www.python.org/downloads/) 3.10 or newer:
 
 ```bash
@@ -95,6 +98,7 @@ The streams are created **by your computer**, at the time the schedule says, thr
 official APIs. There is no server of ours. So the app has to run at that time:
 
 - leave it open, or closed to the tray (the default), and switch on **Settings → Start when I log in**; or
+- run it in a container on a server that is always on ([docker/README.md](docker/README.md)); or
 - have your system's task scheduler run the program with `--run` (from source: `python app.py --run`), which creates what is due and exits.
 
 If the computer was off, the app creates the missed streams the next time it runs, as long as the
@@ -153,6 +157,7 @@ Python and Qt (PySide6), standard library for HTTPS.
 | `notify.py`, `updates.py` | alerts by email, Discord, Slack and Pushover; the look for a newer version |
 | `vault.py`, `store.py` | secrets in the keychain; everything else in `config.json` |
 | `ui.py`, `mainwindow.py`, `dialogs.py`, `wizards.py` | the look, the pages, the dialogs, the setup guides |
+| `Dockerfile`, `docker/` | the container: its start, the Unraid template ([docker/README.md](docker/README.md)) |
 
 ```bash
 python -m unittest discover tests
