@@ -41,6 +41,9 @@ of each stream in the title, shows the coming stream on your website, and tells 
 
 **Also**
 
+- **Start and end automatically, per schedule:** "Start automatically when OBS connects" and "End
+  automatically when OBS stops" are now two switches, on the channel's Options and in each schedule;
+  a schedule that does not change them follows the channel, as before.
 - Starting the app while it runs shows its window instead of a message.
 
 ## New in 0.0.7

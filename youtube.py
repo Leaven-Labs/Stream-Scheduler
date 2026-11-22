@@ -270,7 +270,34 @@ def update_broadcast(token, broadcast_id, title, description, start_utc, options
         body["status"] = {"privacyStatus": options["privacy"]}
     net.request("PUT", f"{API}/liveBroadcasts", {"part": ",".join(k for k in body if k != "id")}, token=token,
                 body=body)
-    return " ".join(dress(token, broadcast_id, title, description, options))
+    notes = [set_auto(token, broadcast_id, options)] + dress(token, broadcast_id, title, description, options)
+    return " ".join(n for n in notes if n)
+
+
+# what YouTube reports in contentDetails but does not take back in an update
+_READ_ONLY = ("boundStreamId", "boundStreamLastUpdateTimeMs")
+
+
+def set_auto(token, broadcast_id, options):
+    """Make a broadcast start and end with the encoder as the options say (enableAutoStart and
+    enableAutoStop). Sent only when they differ from what YouTube has. An update of contentDetails
+    replaces all of it, so the rest is sent back as YouTube reported it. Returns a note ("" when done)."""
+    want = {"enableAutoStart": bool(options.get("auto_start", True)),
+            "enableAutoStop": bool(options.get("auto_stop", True))}
+    try:
+        current = (broadcast(token, broadcast_id) or {}).get("contentDetails") or {}
+        if all(current.get(k) == v for k, v in want.items()):
+            return ""
+        details = {k: v for k, v in current.items() if k not in _READ_ONLY}
+        if isinstance(details.get("monitorStream"), dict):
+            details["monitorStream"] = {k: v for k, v in details["monitorStream"].items() if k != "embedHtml"}
+        details.update(want)
+        net.request("PUT", f"{API}/liveBroadcasts", {"part": "contentDetails"}, token=token,
+                    body={"id": broadcast_id, "contentDetails": details})
+    except net.ApiError as exc:
+        return (f"Starting and ending with OBS could not be changed ({exc}). Change it in YouTube Studio "
+                "if needed.")
+    return ""
 
 
 def delete_broadcast(token, broadcast_id):

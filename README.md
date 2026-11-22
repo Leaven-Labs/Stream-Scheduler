@@ -26,7 +26,8 @@ stream already in the title, shows the coming stream on your website, and tells 
   note (`{note}`), or skip it, without touching the schedule. If the stream already exists, it is
   changed on YouTube and the website. *Cancel* deletes a stream from YouTube.
 - **Thumbnails and YouTube settings.** A thumbnail per schedule; who can watch, playlist, category,
-  delay and stream key per channel, and who can watch and the playlist per schedule too.
+  delay, stream key, and starting and ending automatically with OBS per channel; who can watch, the
+  playlist, and starting and ending automatically per schedule too.
 - **Preview before it is sent.** *Preview what is sent* shows the title, description, time and every
   setting of the next streams, without sending anything.
 - **Alerts.** Be told by email, Discord, Slack or Pushover when a stream could not be scheduled or a

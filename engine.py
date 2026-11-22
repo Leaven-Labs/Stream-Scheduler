@@ -86,13 +86,25 @@ def redo(entry, why):
     entry.update(status="failed", note=why, redo=True, at=OLD)
 
 
+AUTO = ("auto_start", "auto_stop")   # YouTube's enableAutoStart and enableAutoStop
+
+
+def youtube_auto(options):
+    """(auto_start, auto_stop) of a channel's options. Both on when never set (YouTube's own default)."""
+    return tuple(bool(options.get(key, True)) for key in AUTO)
+
+
 def youtube_options(schedule, dest, thumbnail=""):
     """How a schedule's stream is made on a channel: the channel's own options, with what the schedule
-    says otherwise (who can watch, the playlist) and the stream's thumbnail."""
+    says otherwise (who can watch, the playlist, starting and ending with OBS) and the stream's
+    thumbnail. A schedule that never set auto_start or auto_stop follows the channel as it is now."""
     options = dict(dest.get("options", {}))
     for key in ("privacy", "playlist"):
         if schedule.get(key):
             options[key] = schedule[key]
+    for key in AUTO:
+        if schedule.get(key) is not None:
+            options[key] = bool(schedule[key])
     options["thumbnail"] = thumbnail
     return options
 
@@ -584,7 +596,8 @@ def preview(store, schedule, count=3, now=None):
                          ("Starts (UTC, as YouTube is told)", recurrence.to_utc(when).strftime("%Y-%m-%d %H:%M")),
                          ("Stream key", o.get("stream_title") or "chosen in YouTube Studio"),
                          ("Made for kids", "Yes" if o.get("made_for_kids") else "No"),
-                         ("Starts and stops by itself", "Yes" if o.get("auto_start", True) else "No"),
+                         ("Starts when OBS connects", "Yes" if o.get("auto_start", True) else "No"),
+                         ("Ends when OBS stops", "Yes" if o.get("auto_stop", True) else "No"),
                          ("Delay", dict(youtube.LATENCY).get(o.get("latency") or "normal", "Normal").split(":")[0]),
                          ("Category", dict(youtube.CATEGORIES).get(str(o.get("category") or ""), "YouTube's own choice")),
                          ("Playlist", youtube.playlist_id(o.get("playlist", "")) or

@@ -89,7 +89,8 @@ class YouTubeOptions(QWidget):
         wanted = self.stream.findData(options.get("stream_id", ""))
         self.stream.setCurrentIndex(wanted if wanted > 0 else min(1, self.stream.count() - 1))
         self.kids = ui.Switch(options.get("made_for_kids", False))
-        self.auto = ui.Switch(options.get("auto_start", True))
+        self.auto_start = ui.Switch(options.get("auto_start", True))
+        self.auto_stop = ui.Switch(options.get("auto_stop", True))
         self.latency = QComboBox()
         for key, text in youtube.LATENCY:
             self.latency.addItem(text, key)
@@ -104,8 +105,10 @@ class YouTubeOptions(QWidget):
         rows = [("Who can watch", self.privacy, "A schedule can say otherwise for its own streams."),
                 ("Stream key", self.stream, "With a key chosen, your encoder (OBS, ATEM ...) keeps the same key every week."),
                 ("Made for kids", self.kids, "YouTube requires an answer. Most services and events are not."),
-                ("Start and stop by itself", self.auto,
-                 "The broadcast goes live when your encoder starts sending, and ends when it stops."),
+                ("Start automatically", self.auto_start,
+                 "Goes live when OBS (or your encoder) connects. Off: press Go live in YouTube Studio."),
+                ("End automatically", self.auto_stop,
+                 "Ends when OBS stops sending. Off: end it in YouTube Studio. Schedules can say otherwise."),
                 ("Delay", self.latency, "How far viewers are behind the camera. Lower delays mean lower picture "
                                         "quality, and ultra low has no captions or 1440p and above."),
                 ("Category", self.category, ""),
@@ -120,8 +123,8 @@ class YouTubeOptions(QWidget):
     def value(self):
         return {"privacy": self.privacy.currentData(), "stream_id": self.stream.currentData(),
                 "stream_title": self.stream.currentText() if self.stream.currentData() else "",
-                "made_for_kids": self.kids.isChecked(), "auto_start": self.auto.isChecked(),
-                "auto_stop": self.auto.isChecked(), "latency": self.latency.currentData(),
+                "made_for_kids": self.kids.isChecked(), "auto_start": self.auto_start.isChecked(),
+                "auto_stop": self.auto_stop.isChecked(), "latency": self.latency.currentData(),
                 "category": self.category.currentData(), "playlist": self.playlist.text().strip()}
 
     def problem(self):

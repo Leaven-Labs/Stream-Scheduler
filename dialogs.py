@@ -224,10 +224,20 @@ class ScheduleDialog(QDialog):
         self.privacy.setCurrentIndex(max(0, self.privacy.findData(s.get("privacy", ""))))
         self.playlist = QLineEdit(s.get("playlist", ""))
         self.playlist.setPlaceholderText("Optional: paste a playlist's link. Empty: as the channel is set.")
+        # starting and ending with OBS: the schedule's own choice, or else the channel's as it is now
+        channel = next((d for d in (store.destination(i) for i in s["destinations"]) if d and d["kind"] == "youtube"),
+                       next((d for d in store.destinations if d["kind"] == "youtube"), None))
+        self.channel_auto = engine.youtube_auto(channel.get("options", {}) if channel else {})
+        self.auto_start = ui.Switch(bool(s["auto_start"]) if s.get("auto_start") is not None else self.channel_auto[0])
+        self.auto_stop = ui.Switch(bool(s["auto_stop"]) if s.get("auto_stop") is not None else self.channel_auto[1])
         tube = QVBoxLayout()
         tube.setSpacing(6)
         tube.addWidget(self.privacy, 0, Qt.AlignLeft)
         tube.addWidget(self.playlist)
+        tube.addWidget(ui.toggle_row(self.auto_start, "Start automatically when OBS connects"))
+        tube.addWidget(ui.toggle_row(self.auto_stop, "End automatically when OBS stops"))
+        tube.addWidget(ui.label("Unless you change them here, these follow the channel's Options on the "
+                                "Destinations page.", "small", wrap=True))
         self.date_format = QComboBox()
         sample = datetime(2027, 11, 15)
         for key in titles.DATE_FORMATS:
@@ -379,6 +389,13 @@ class ScheduleDialog(QDialog):
         s.pop("once", None)
         for key in ("encoder_id", "obs_checks", "obs_open", "obs_profile", "obs_collection"):
             s.pop(key, None)
+        # kept only when the schedule had its own choice, or one is made here: otherwise the channel's follows
+        for key, switch, inherited in (("auto_start", self.auto_start, self.channel_auto[0]),
+                                       ("auto_stop", self.auto_stop, self.channel_auto[1])):
+            if self.schedule.get(key) is not None or switch.isChecked() != inherited:
+                s[key] = switch.isChecked()
+            else:
+                s.pop(key, None)
         if self.encoder.currentData():
             s["encoder_id"] = self.encoder.currentData()
             s["obs_checks"] = [m for m in (self.obs_first.value(), self.obs_second.value()) if m]
@@ -616,7 +633,7 @@ class YouTubeOptionsDialog(QDialog):
     def __init__(self, parent, dest):
         super().__init__(parent)
         self.setWindowTitle("YouTube options")
-        self.resize(600, 600)
+        self.resize(680, 760)
         col = QVBoxLayout(self)
         col.setContentsMargins(26, 22, 26, 18)
         col.setSpacing(12)
