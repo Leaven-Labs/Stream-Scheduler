@@ -8,6 +8,7 @@ from datetime import datetime, time, timedelta
 
 import facebook
 import net
+import obs
 import recurrence
 import titles
 import vault as vault_module
@@ -316,6 +317,16 @@ def test_destination(vault, dest):
             "Test", test=True))
         return f"{dest['name']} (a test message was sent)"
     raise net.ApiError("This kind of destination cannot be tested.")
+
+
+def encoder_password(vault, encoder):
+    """The OBS password of an encoder ("" when its OBS asks for none)."""
+    return vault.get(encoder["id"], "password") if encoder.get("auth", True) else ""
+
+
+def test_encoder(vault, encoder):
+    """Connect to an encoder's OBS. Returns a line about it: its version, profile and scene collection."""
+    return obs.describe(obs.info(encoder["host"], encoder["port"], encoder_password(vault, encoder)))
 
 
 def preview(store, schedule, count=3, now=None):

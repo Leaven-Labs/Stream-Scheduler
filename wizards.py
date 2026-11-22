@@ -1,5 +1,5 @@
-"""The step-by-step guides: connecting a destination (a YouTube channel, a website) and setting up a
-way to be told (email, Discord, Slack, Pushover).
+"""The step-by-step guides: connecting a destination (a YouTube channel, a website), connecting OBS on
+this or another computer, and setting up a way to be told (email, Discord, Slack, Pushover).
 
 Each guide explains what to click on the platform's own pages, says why each step is safe, and ends
 by saving the sign-in in the system keychain (vault.py). Nothing is saved before the last step.
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QFrame, QGridLayout, QHBoxLay
 import facebook
 import net
 import notify
+import obs
 import ui
 import webhook
 import wordpress
@@ -962,6 +963,177 @@ class WebhookWizard(Wizard):
         self.store.destinations.append(dest)
         self.store.save()
         self.destination = dest
+        return ""
+
+
+class ObsWizard(Wizard):
+    """Connect OBS on this computer or another one on the network (an "encoder"), so the app can look
+    at it before a service. It only reads from OBS; it never starts a stream or changes a setting."""
+
+    def __init__(self, parent, store, vault, existing=None):
+        super().__init__(parent, "Connect OBS", "obs")
+        self.store, self.vault = store, vault
+        self.destination = None   # the encoder, once saved (the name the other guides use)
+        self.found = None
+
+        self.add_step("Before you start", "Let Stream Scheduler look at OBS", [
+            ui.rich("Stream Scheduler can look at OBS Studio before a service, to see that it is open and "
+                    "ready. OBS can be on <b>this computer</b> or on <b>another computer on the same network</b>, "
+                    "such as a second streaming PC."),
+            ui.rich("It only <b>looks</b>. It never starts or stops a stream, switches a scene or changes a "
+                    "setting in OBS: going live stays with the people at the computer."),
+            steps("<b>OBS Studio 28 or newer.</b> Its remote control (the WebSocket server) is built in.",
+                  "For another computer: its <b>name or address</b> on the network, such as 192.168.1.20.",
+                  "About five minutes."),
+            ui.callout("How this keeps the streaming computer safe",
+                       f"OBS's remote control is protected by a password, which the app keeps in "
+                       f"<b>{vault.where()}</b>, encrypted with your login. The connection is not encrypted, "
+                       "so it is for your own network only: never open port 4455 to the internet on your "
+                       "router. To reach OBS at another site, use a VPN such as Tailscale.")])
+
+        self.add_step("In OBS", "Switch on OBS's remote control", [
+            steps("On the computer with OBS, open <b>OBS Studio</b>.",
+                  "Choose <b>Tools → WebSocket Server Settings</b>.",
+                  "Tick <b>Enable WebSocket server</b>.",
+                  "Leave <b>Enable Authentication</b> ticked, so a password is needed. OBS makes one for you.",
+                  "Leave the <b>Server Port</b> at <b>4455</b> unless you have a reason to change it.",
+                  "Click <b>Show Connect Info</b> and keep it open: it shows the address, port and password "
+                  "for the next step. Then click <b>OK</b>."),
+            ui.callout("OBS on another computer",
+                       "When the WebSocket server is switched on, Windows may ask whether OBS may use the "
+                       "network. Allow it on <b>private networks</b> only. If you missed that question, allow "
+                       "<b>OBS Studio</b> in Windows Security → Firewall & network protection → Allow an app "
+                       "through firewall.", "warn", "warn")])
+
+        self.place = QComboBox()
+        self.place.addItem("This computer", "local")
+        self.place.addItem("Another computer on the network", "remote")
+        self.name = QLineEdit("OBS on this computer")
+        self.host = QLineEdit()
+        self.host.setPlaceholderText("Its name or address, such as 192.168.1.20")
+        self.port = QLineEdit(str(obs.DEFAULT_PORT))
+        self.password = secret_field("The password from Show Connect Info")
+        self.fill_button = ui.button("Fill in from OBS on this computer", "", self.fill_in,
+                                     "Read the port and password from OBS's own settings on this computer")
+        self.fill_state = ui.label("", "sub", wrap=True)
+        self.fill_row = action_row(self.fill_button, self.fill_state)
+        self.test_button = ui.button("Connect to OBS", "primary", self.test)
+        self.test_state = ui.label("", "sub", wrap=True)
+        self.fill_note = ui.rich("<b>Fill in</b> reads the port and password from OBS's own settings on this "
+                                 "computer, so you need not copy them. Nothing else of OBS's is read.")
+        self.add_step("Connect", "Connect to OBS", [
+            field_grid([("OBS is on", self.place), ("Name in this app", self.name), ("Computer", self.host),
+                        ("Port", self.port), ("Password", self.password)]),
+            self.fill_row, action_row(self.test_button, self.test_state), self.fill_note,
+            ui.callout("Stream Scheduler in Docker",
+                       "Choose <b>Another computer on the network</b> and type the address of the computer "
+                       "with OBS: the container is a computer of its own.")],
+            check=self.check)
+        self.place.currentIndexChanged.connect(self.placed)
+        for edit in (self.host, self.port, self.password):
+            edit.textChanged.connect(self.changed)
+        if existing:
+            self.place.setCurrentIndex(0 if existing.get("local") else 1)
+            self.name.setText(existing.get("name", ""))
+            if not existing.get("local"):
+                self.host.setText(existing.get("host", ""))
+            self.port.setText(str(existing.get("port", obs.DEFAULT_PORT)))
+        self.placed()
+        self.ready()
+
+    def local(self):
+        return self.place.currentData() == "local"
+
+    def placed(self):
+        local = self.local()
+        self.host.setEnabled(not local)
+        if local:
+            self.host.clear()
+            self.host.setPlaceholderText("This computer")
+        else:
+            self.host.setPlaceholderText("Its name or address, such as 192.168.1.20")
+        self.fill_row.setVisible(local)
+        self.fill_note.setVisible(local)
+        names = ("OBS on this computer", "OBS on another computer", "OBS")
+        if self.name.text().strip() in names or not self.name.text().strip():
+            self.name.setText(names[0] if local else names[1])
+        self.changed()
+
+    def changed(self):
+        self.found = None
+        self.test_state.setText("")
+
+    def target(self):
+        """(host, port) from the fields, or ObsError."""
+        if self.local():
+            host = obs.LOCAL
+        else:
+            host, port = obs.address(self.host.text())
+            if self.host.text().strip().count(":") == 1:   # "192.168.1.20:4456": the port typed with it wins
+                return host, port
+        text = self.port.text().strip()
+        if not text.isdigit() or not 0 < int(text) < 65536:
+            raise obs.ObsError("The port is a number, such as 4455.", reason="address")
+        return host, int(text)
+
+    def fill_in(self):
+        found = obs.local_settings()
+        if found is None:
+            self.fill_state.setText("")
+            self.error.setText("OBS's settings were not found on this computer. Is OBS 28 or newer installed "
+                               "here? You can type the port and password instead.")
+            return
+        self.error.setText("")
+        self.port.setText(str(found["port"]))
+        self.password.setText(found["password"] if found["auth"] else "")
+        self.fill_state.setText("✓  Filled in." if found["enabled"] else
+                                "Filled in, but the WebSocket server is switched off in OBS: switch it on "
+                                "(step 2), then connect.")
+
+    def test(self):
+        self.error.setText("")
+        try:
+            host, port = self.target()
+        except obs.ObsError as exc:
+            self.error.setText(str(exc))
+            return
+        password = self.password.text()
+        self.test_button.setEnabled(False)
+        self.test_state.setText("Connecting ...")
+        ui.run_async(lambda: obs.info(host, port, password), self.tested)
+
+    def tested(self, found, error):
+        self.test_button.setEnabled(True)
+        if error:
+            self.found = None
+            self.test_state.setText("")
+            self.error.setText(str(error))
+            return
+        self.found = found
+        self.error.setText("")
+        self.test_state.setText(f"✓  Connected: {obs.describe(found)}. Click Finish to save.")
+
+    def check(self):
+        if self.found:
+            return self.vault.available() if self.password.text() else ""
+        if self.test_button.isEnabled():
+            self.test()
+        return self.error.text() or "Connecting to OBS ... click Finish when it says Connected."
+
+    def finish(self):
+        host, port = self.target()
+        password = self.password.text()
+        encoder = {"id": new_id(), "kind": "obs", "name": self.name.text().strip() or "OBS", "host": host,
+                   "port": port, "local": self.local(), "auth": bool(password)}
+        if password:
+            try:
+                self.vault.set(encoder["id"], "password", password)
+            except VaultError as exc:
+                return str(exc)
+        self.password.clear()
+        self.store.encoders.append(encoder)
+        self.store.save()
+        self.destination = encoder
         return ""
 
 

@@ -33,6 +33,13 @@
   - Email: the mail account's password (use an app password) is kept in the keychain; the connection
     to the mail server is always encrypted (SSL or STARTTLS).
   - Pushover: the API token and the user key, both kept in the keychain.
+  - OBS: the password of its remote control (obs-websocket), kept in the keychain. The app only
+    reads from OBS (its version, profiles, scene collections and stream settings); it never starts a
+    stream or changes a setting. OBS's remote control is **not encrypted** (`ws://`, port 4455), so it
+    is for your own network only: never forward that port on your router, and use a VPN such as
+    Tailscale to reach OBS at another site. On this computer, the guide can read the port and password
+    from OBS's own settings file, only when you click *Fill in*. The stream key OBS reports is compared
+    and dropped, never shown, logged or saved.
 - **What an alert says:** the stream's title, time and link, and the reason something failed. It
   goes only to the services you set up on the Alerts page.
 - **A backup file holds no secrets**: the same as the settings file, in a place you choose.
@@ -53,7 +60,9 @@
 - To cancel access: remove the destination in the app (this deletes the sign-in from the computer),
   and revoke it at <https://myaccount.google.com/permissions>, delete the key at
   <https://manage.wix.com/account/api-keys>, or revoke the application password in your WordPress
-  profile. Removing a way to be told on the Alerts page deletes its key from the computer; delete the
+  profile. Removing OBS on the Destinations page deletes its password from this computer; change the
+  password in OBS (Tools → WebSocket Server Settings) to end it there. Removing a way to be told on the
+  Alerts page deletes its key from the computer; delete the
   webhook in Discord or Slack, or the token at pushover.net, to end it on their side.
 - Never share a client secret, App secret, access token or stream key, and never commit one to git.
 

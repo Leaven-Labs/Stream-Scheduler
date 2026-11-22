@@ -34,6 +34,10 @@ stream already in the title, shows the coming stream on your website, and tells 
 - **Your website follows along.** After a stream is created on YouTube, a page of your Wix or
   WordPress site is pointed at it, or a web address of your choice is told (a webhook, for Zapier,
   Make and others).
+- **OBS on this or another computer.** Connect OBS Studio (28 or newer), on this computer or a second
+  streaming PC on the same network, through its built-in remote control. *Test* shows the OBS version,
+  profile and scene collection. The app only looks at OBS; it never goes live or changes a setting.
+  Checking OBS before each service comes next.
 - **Guided setup.** A step-by-step guide for every destination and every kind of alert explains what
   to click on the other side, and what each step means for your account's safety.
 - **Backup and new versions.** Save everything but the sign-ins to one file and restore it, also on
@@ -120,6 +124,9 @@ stream is still more than 10 minutes away. A stream is never created twice.
 - **Other websites (webhook).** The app sends each new stream's title, time and link as JSON to a web
   address, where an automation service (Zapier, Make) can update Squarespace or anything else.
   Squarespace itself offers no way for an app to change a page.
+- **OBS.** Switch on Tools → WebSocket Server Settings in OBS (28 or newer) and keep authentication
+  on. For OBS on another computer, Windows must let OBS use the private network (its firewall asks
+  once). The connection is not encrypted: keep it on your own network and never forward port 4455.
 - **Thumbnails.** YouTube accepts custom thumbnails only from channels verified by phone
   (youtube.com/verify): JPG or PNG, at most 2 MB.
 - **Alerts** are sent by this app from your computer, so they cannot tell you that the computer is
@@ -154,6 +161,7 @@ Python and Qt (PySide6), standard library for HTTPS.
 | `engine.py` | which streams are coming, and creating the ones that are due |
 | `recurrence.py`, `titles.py` | when streams are; filling `{date}` into titles |
 | `youtube.py`, `wix.py`, `wordpress.py`, `webhook.py`, `net.py` | the platforms' APIs (`facebook.py` is kept but switched off) |
+| `obs.py` | OBS's remote control (obs-websocket 5): a small WebSocket client, read-only requests |
 | `notify.py`, `updates.py` | alerts by email, Discord, Slack and Pushover; the look for a newer version |
 | `vault.py`, `store.py` | secrets in the keychain; everything else in `config.json` |
 | `ui.py`, `mainwindow.py`, `dialogs.py`, `wizards.py` | the look, the pages, the dialogs, the setup guides |

@@ -25,7 +25,7 @@ import ui
 import updates
 import vault as vault_module
 from dialogs import KIND_NAMES, AboutDialog, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog, time_edit
-from wizards import NOTIFY_WIZARDS, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
+from wizards import NOTIFY_WIZARDS, ObsWizard, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
 
 CHECK_EVERY_MS = 60_000
 WIZARDS = {"youtube": YouTubeWizard, "wix": WixWizard, "wordpress": WordPressWizard, "webhook": WebhookWizard}
@@ -363,6 +363,8 @@ class DestinationsPage(Page):
         menu.addAction("Another service (webhook)", lambda: self.add(WebhookWizard))
         site.setMenu(menu)
         self.actions.addWidget(site)
+        self.actions.addWidget(ui.button("Add OBS", "", self.add_encoder,
+                                         "Let the app look at OBS on this or another computer before services"))
         self.results = {}
 
     def fill(self):
@@ -415,11 +417,88 @@ class DestinationsPage(Page):
                                         "send here stay as they are."), 0, Qt.AlignTop)
             row.addWidget(ui.button("Remove", "mini", lambda _=False, d=d: self.remove(d)), 0, Qt.AlignTop)
             self.col.addWidget(card)
+        if self.store.encoders:
+            self.col.addWidget(ui.label("OBS", "caps"))
+        for e in self.store.encoders:
+            self.col.addWidget(self.encoder_card(e))
         self.col.addWidget(ui.callout(
             "Where your sign-ins are kept",
             f"Tokens and client secrets are stored in <b>{self.vault.where()}</b>, encrypted with your login to this "
             "computer. They are never written to the app's settings file, and each is sent only to its own "
-            "platform (Google, or your website). Removing a destination deletes its sign-in from this computer."))
+            "platform (Google, your website, or OBS on your network). Removing a destination deletes its sign-in "
+            "from this computer."))
+
+    def encoder_card(self, e):
+        card = ui.card()
+        row = QHBoxLayout(card)
+        row.setContentsMargins(18, 14, 16, 14)
+        row.setSpacing(14)
+        row.addWidget(ui.Icon("obs", 34), 0, Qt.AlignTop)
+        mid = QVBoxLayout()
+        mid.setSpacing(4)
+        mid.addWidget(ui.label(e["name"], "big"))
+        where = "This computer" if e.get("local") else f"{e['host']}"
+        mid.addWidget(ui.label(f"OBS Studio  ·  {where}  ·  port {e['port']}", "sub", wrap=True))
+        kind, text = self.results.get(e["id"], ("small", f"Password kept in {self.vault.where()}" if e.get("auth", True)
+                                                 else "OBS asks for no password"))
+        mid.addWidget(ui.label(text, kind, wrap=True))
+        row.addLayout(mid, 1)
+        row.addWidget(ui.button("Test", "mini", lambda _=False, e=e: self.test_encoder(e),
+                                "Connect to OBS now and show what it answers"), 0, Qt.AlignTop)
+        row.addWidget(ui.button("Change", "mini", lambda _=False, e=e: self.change_encoder(e),
+                                "Go through the guide again: another address, port or password"), 0, Qt.AlignTop)
+        row.addWidget(ui.button("Remove", "mini", lambda _=False, e=e: self.remove_encoder(e)), 0, Qt.AlignTop)
+        return card
+
+    def add_encoder(self):
+        wizard = ObsWizard(self, self.store, self.vault)
+        if wizard.exec():
+            self.refresh()
+
+    def change_encoder(self, encoder):
+        """Run the guide again; the encoder keeps its id, so the schedules that use it stay with it."""
+        wizard = ObsWizard(self, self.store, self.vault, existing=encoder)
+        if not wizard.exec():
+            return
+        new = wizard.destination
+        self.store.encoders.remove(new)
+        try:
+            if new.get("auth"):
+                self.vault.move("obs", new["id"], encoder["id"])
+            else:
+                self.vault.forget(encoder["id"], "obs")
+        except vault_module.VaultError as exc:
+            self.vault.forget(new["id"], "obs")
+            ui.tell(self, "Change OBS", f"{exc}\n\nNothing was changed.")
+            return
+        new["id"] = encoder["id"]
+        self.store.encoders[self.store.encoders.index(encoder)] = new
+        self.results.pop(encoder["id"], None)
+        self.store.save()
+        self.refresh()
+
+    def test_encoder(self, encoder):
+        self.results[encoder["id"]] = ("small", "Connecting ...")
+        self.refresh()
+
+        def done(line, error):
+            self.results[encoder["id"]] = ("error", str(error)) if error else ("good", f"✓  Works: {line}")
+            self.refresh()
+        ui.run_async(lambda: engine.test_encoder(self.vault, encoder), done)
+
+    def remove_encoder(self, encoder):
+        users = [s["name"] for s in self.store.schedules if s.get("encoder_id") == encoder["id"]]
+        more = f" These schedules will no longer check OBS: {', '.join(users)}." if users else ""
+        if not ui.ask(self, "Remove OBS", f"Remove “{encoder['name']}” and delete its password from this computer?"
+                                          f"{more} Nothing changes in OBS itself."):
+            return
+        self.vault.forget(encoder["id"], "obs")
+        self.store.encoders.remove(encoder)
+        for s in self.store.schedules:
+            if s.get("encoder_id") == encoder["id"]:
+                s.pop("encoder_id")
+        self.store.save()
+        self.refresh()
 
     def add(self, wizard_class):
         wizard = wizard_class(self, self.store, self.vault)

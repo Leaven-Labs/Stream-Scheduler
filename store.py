@@ -1,4 +1,5 @@
-"""The app's saved data: one JSON file (config.json) with settings, destinations, schedules and history.
+"""The app's saved data: one JSON file (config.json) with settings, destinations, encoders, schedules and
+history.
 
 No secrets are written here. A destination holds only what is safe to read (its name, the channel or
 Page id, the OAuth client id); its tokens are in the system keychain (vault.py), found by its id.
@@ -39,11 +40,11 @@ class Store:
     def _whole(data, where):
         """The data with every part present, or ValueError when it is not this app's data."""
         if not isinstance(data, dict) or not all(isinstance(data.get(k, []), list)
-                                                 for k in ("destinations", "schedules", "history")):
+                                                 for k in ("destinations", "encoders", "schedules", "history")):
             raise ValueError(f"{where} is not a settings file")
         data.setdefault("version", 1)
         data["settings"] = {**DEFAULT_SETTINGS, **(data.get("settings") or {})}
-        for key in ("destinations", "schedules", "history"):
+        for key in ("destinations", "encoders", "schedules", "history"):
             data.setdefault(key, [])
         return data
 
@@ -79,11 +80,15 @@ class Store:
 
     settings = property(lambda self: self.data["settings"])
     destinations = property(lambda self: self.data["destinations"])
+    encoders = property(lambda self: self.data["encoders"])   # OBS on this or another computer (obs.py)
     schedules = property(lambda self: self.data["schedules"])
     history = property(lambda self: self.data["history"])
 
     def destination(self, dest_id):
         return next((d for d in self.destinations if d["id"] == dest_id), None)
+
+    def encoder(self, encoder_id):
+        return next((e for e in self.encoders if e["id"] == encoder_id), None)
 
     def schedule(self, schedule_id):
         return next((s for s in self.schedules if s["id"] == schedule_id), None)

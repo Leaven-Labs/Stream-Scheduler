@@ -11,7 +11,7 @@ import paths
 
 SERVICE = paths.APP_NAME
 SECRETS = {"youtube": ["client_secret", "refresh_token"], "facebook": ["page_token"], "wix": ["api_key"],
-           "wordpress": ["app_password"], "webhook": ["url"]}
+           "wordpress": ["app_password"], "webhook": ["url"], "obs": ["password"]}
 NOTIFY = "notify"   # the id under which the notification channels' secrets are kept (notify.py)
 
 

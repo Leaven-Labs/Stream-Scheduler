@@ -91,8 +91,8 @@ def uitest():
         from mainwindow import MainWindow
         from store import Store
         from vault import MemoryVault
-        from wizards import (NOTIFY_WIZARDS, FacebookWizard, WebhookWizard, WixWizard, WordPressWizard,
-                             YouTubeWizard)
+        from wizards import (NOTIFY_WIZARDS, FacebookWizard, ObsWizard, WebhookWizard, WixWizard,
+                             WordPressWizard, YouTubeWizard)
         import engine
         for theme in ("light", "dark"):
             store, vault = Store(), MemoryVault()
@@ -112,7 +112,8 @@ def uitest():
                     PreviewDialog(window, store, store.schedules[0]), AboutDialog(window)]
             for wizard in [YouTubeWizard(window, store, vault), FacebookWizard(window, store, vault),
                            WixWizard(window, store, vault), WordPressWizard(window, store, vault),
-                           WebhookWizard(window, store, vault)] + [w(window, store, vault)
+                           WebhookWizard(window, store, vault), ObsWizard(window, store, vault),
+                           ObsWizard(window, store, vault, existing=store.encoders[-1])] + [w(window, store, vault)
                                                                    for w in NOTIFY_WIZARDS.values()]:
                 for i in range(len(wizard.checks)):
                     wizard.go(i)
