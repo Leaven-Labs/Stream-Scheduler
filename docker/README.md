@@ -41,15 +41,16 @@ To build the image yourself: `docker build -t stream-scheduler .` in the reposit
 | `KEYRING_PASSWORD` | **Required.** Encrypts the sign-ins (see below). Choose one and keep it. |
 | `TZ` | Your time zone, such as `America/Chicago`. Schedules use it: "Sunday at 8:00 AM" is 8:00 AM there. |
 | `USER_ID`, `GROUP_ID` | Who owns the files in `/config` (Unraid: 99 and 100). |
-| `WEB_AUTHENTICATION`, `WEB_AUTHENTICATION_USERNAME`, `WEB_AUTHENTICATION_PASSWORD` | `1` and a user name and password, to ask for them before the WebUI opens. |
-| `VNC_PASSWORD` | A password for the WebUI and port 5900 (a simpler choice than the three above). |
+| `WEB_AUTHENTICATION`, `WEB_AUTHENTICATION_USERNAME`, `WEB_AUTHENTICATION_PASSWORD` | `1` and a user name and password: a login page before the WebUI opens. **Needs `SECURE_CONNECTION=1`**, or the container does not start. |
+| `SECURE_CONNECTION` | `1` to serve the WebUI over https, with a self-signed certificate (the browser warns the first time; `http://` addresses are sent on to `https://`). |
+| `VNC_PASSWORD` | A simpler choice than the login page: one password, at most 8 characters, asked by the WebUI and port 5900, also over plain http. |
 | `DARK_MODE` | `1` for a dark frame around the app (the app's own theme is in its Settings). |
 
 The container is built on [jlesage/baseimage-gui](https://github.com/jlesage/docker-baseimage-gui), so
-its other settings work too, such as `SECURE_CONNECTION=1` for https.
+its other settings work too.
 
 **Anyone who can open the WebUI can use the app**, and so change or cancel your streams. Keep port
-5800 on your home network, set a password as above, and reach it from outside only through a VPN
+5800 on your home network, set a password as above (the login page, with `SECURE_CONNECTION=1`), and reach it from outside only through a VPN
 (Unraid's WireGuard, Tailscale) rather than by opening the port on your router.
 
 ## The sign-ins and `KEYRING_PASSWORD`
