@@ -53,6 +53,26 @@
   One exception, which Meta's API requires: the one-time exchange of the pasted token, with the App
   secret, is a query to `graph.facebook.com` over HTTPS.
 
+## Unattended PC (Windows)
+
+Off by default, and only turned on in Settings → Unattended PC after a guide shows what it changes.
+The installer's last page only offers to open that guide (unticked).
+
+- **Automatic sign-in** stores the account's password as Windows' protected LSA secret
+  `DefaultPassword`, the same as Sysinternals Autologon and `netplwiz`, never as text in the registry
+  or in a file, and Stream Scheduler does not keep it. **Any administrator of the computer can read
+  it**, so it is refused for administrator accounts: use a standard account made for streaming, with
+  nothing of your own in it.
+- The part that writes it runs as administrator (Windows asks for approval), in a separate copy of
+  the app that asks for the password itself and checks it with Windows; the password is never passed
+  on a command line.
+- **For a few seconds after each start the desktop is unlocked**, until the lock task locks it, and
+  anyone who can switch the computer on reaches the signed-in, locked account without the password.
+- The lock task locks only when Windows started less than two minutes ago; the wake task runs the
+  app's `--run` and can wake the computer from sleep. Both run as the signed-in account, without
+  administrator rights.
+- Turning automatic sign-in off deletes the stored password at once.
+
 ## What you can do
 
 - Turn on two-factor authentication for the Google and Facebook accounts.

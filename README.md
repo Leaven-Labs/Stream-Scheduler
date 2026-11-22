@@ -41,6 +41,10 @@ stream already in the title, shows the coming stream on your website, and tells 
   looks at once. On the computer where the app runs, it can also **open OBS** an hour before (with
   the profile and scene collection you choose) if OBS is not open yet. The app never goes live, closes
   OBS or changes a setting in it.
+- **Unattended PC (Windows, optional, off by default).** Automatic sign-in for a standard account made
+  for streaming, the screen locked right after it, and the computer woken from sleep before streams, so
+  the app and OBS get ready with nobody there. A guide explains what it changes and its risks first:
+  see [SECURITY.md](SECURITY.md#unattended-pc-windows).
 - **Guided setup.** A step-by-step guide for every destination and every kind of alert explains what
   to click on the other side, and what each step means for your account's safety.
 - **Backup and new versions.** Save everything but the sign-ins to one file and restore it, also on
@@ -151,7 +155,8 @@ stream is still more than 10 minutes away. A stream is never created twice.
 
 ## Not in this alpha
 
-Code signing; installers for Mac and Linux; running before anyone has signed in to the computer;
+Code signing; installers for Mac and Linux; running before anyone has signed in to the computer
+(use automatic sign-in, Settings → Unattended PC);
 Facebook; a guide for Squarespace (use the webhook); other streaming platforms.
 
 ## For developers
@@ -165,6 +170,7 @@ Python and Qt (PySide6), standard library for HTTPS.
 | `engine.py` | which streams are coming, and creating the ones that are due |
 | `recurrence.py`, `titles.py` | when streams are; filling `{date}` into titles |
 | `youtube.py`, `wix.py`, `wordpress.py`, `webhook.py`, `net.py` | the platforms' APIs (`facebook.py` is kept but switched off) |
+| `winsetup.py` | Windows: Unattended PC (the lock and wake tasks, automatic sign-in, the part that runs as administrator) |
 | `obs.py`, `obslaunch.py` | OBS's remote control (obs-websocket 5): a small WebSocket client, read-only requests; finding and opening OBS on this computer |
 | `notify.py`, `updates.py` | alerts by email, Discord, Slack and Pushover; the look for a newer version |
 | `vault.py`, `store.py` | secrets in the keychain; everything else in `config.json` |

@@ -24,8 +24,9 @@ import titles
 import ui
 import updates
 import vault as vault_module
+import winsetup
 from dialogs import KIND_NAMES, AboutDialog, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog, time_edit
-from wizards import NOTIFY_WIZARDS, ObsWizard, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
+from wizards import NOTIFY_WIZARDS, ObsWizard, UnattendedWizard, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
 
 CHECK_EVERY_MS = 60_000
 WIZARDS = {"youtube": YouTubeWizard, "wix": WixWizard, "wordpress": WordPressWizard, "webhook": WebhookWizard}
@@ -859,6 +860,8 @@ class SettingsPage(Page):
              "The app stays in the tray (menu bar) so streams are still scheduled.", tray),
             ("Start when I log in", "Starts hidden in the tray. Without this, open the app before a stream is due; "
                                     "it catches up on what it missed.", auto)])
+        if winsetup.supported():
+            self.unattended_section()
         self.section("New versions", [
             ("Tell me about new versions", "Once a day the app asks GitHub for this project's list of releases. "
              "Nothing about you is sent, and nothing is downloaded or installed by itself.", newer),
@@ -881,6 +884,66 @@ class SettingsPage(Page):
     def set(self, key, value):
         self.store.settings[key] = value
         self.store.save()
+
+    def unattended_section(self):
+        """Settings → Unattended PC (Windows): automatic sign-in, the lock after it, waking before streams."""
+        state = winsetup.autologon_state()
+        mine = winsetup.autologon_is_mine()
+        if mine:
+            hint = (f"On for {winsetup.account_name(state['domain'], state['user'])}: Windows signs in to this "
+                    "account by itself at every start. Turning it off deletes the stored password.")
+            button = ui.button("Turn off ...", clicked=self.unattended_off)
+        elif state["on"]:
+            hint = (f"Windows signs in to another account by itself "
+                    f"({winsetup.account_name(state['domain'], state['user'])}). Set up from that account.")
+            button = None
+        else:
+            hint = ("Off. Windows signs in to this account by itself at start-up, so OBS and this app can get "
+                    "ready with nobody at the computer. Read what it changes first: it weakens this computer's "
+                    "security.")
+            button = ui.button("Set up ...", clicked=self.window_.open_unattended)
+        lock = ui.Switch(winsetup.task_exists(winsetup.LOCK_TASK))
+        lock.toggled.connect(self.set_lock)
+        wake = ui.Switch(self.store.settings.get("wake_before_stream", False))
+        wake.toggled.connect(self.set_wake)
+        wake_hint = ("Wakes this computer from sleep a few minutes before each stream is created, and before OBS "
+                     "is opened or checked. Not from a full shut-down.")
+        if self.store.settings.get("wake_error"):
+            wake_hint += f"\nNot working: {self.store.settings['wake_error']}"
+        self.section("Unattended PC", [
+            ("Automatic sign-in", hint, button),
+            ("Lock right after it starts", "Locks the automatic sign-in at start-up within seconds. A person who "
+                                           "signs in later is not locked out.", lock),
+            ("Wake before streams", wake_hint, wake)])
+
+    def unattended_off(self):
+        if not ui.ask(self, "Automatic sign-in", "Turn off automatic sign-in and delete the stored password? "
+                                                 "Windows asks for administrator approval."):
+            return
+        code = winsetup.run_elevated(["autologon-off"])
+        if code != winsetup.DONE:
+            ui.tell(self, "Automatic sign-in", "Nothing was changed: the administrator approval was not given."
+                    if code == winsetup.CANCELLED else "Automatic sign-in could not be turned off.")
+        else:
+            try:
+                winsetup.set_lock_task(False)
+            except winsetup.WinSetupError:
+                pass
+        self.refresh()
+
+    def set_lock(self, on):
+        try:
+            winsetup.set_lock_task(on)
+        except winsetup.WinSetupError as exc:
+            ui.tell(self, "Lock right after it starts", str(exc))
+        self.refresh()
+
+    def set_wake(self, on):
+        self.set("wake_before_stream", on)
+        problem = winsetup.sync_wake(self.store)
+        if problem:
+            ui.tell(self, "Wake before streams", f"The wake task could not be made: {problem}")
+        self.refresh()
 
     def set_motion(self, on):
         self.set("motion", on)
@@ -1079,6 +1142,11 @@ class MainWindow(QMainWindow):
             engine.open_obs(self.store, self.vault)   # before the checks, which then find it open
         except Exception:   # never in the way of the scheduling
             pass
+        if winsetup.supported():
+            try:
+                winsetup.sync_wake(self.store)
+            except Exception:
+                pass
         notify.after(self.store, self.vault, entries)
         try:
             updates.check(self.store)
@@ -1126,6 +1194,20 @@ class MainWindow(QMainWindow):
                     sorted({KIND_NAMES.get(e['kind'], e['kind']) for e in made})) + ".", QSystemTrayIcon.Information)
 
     # ---- window and tray ----
+    def open_unattended(self):
+        """Settings → Unattended PC, and its guide (also from the installer's last page)."""
+        self.open_window()
+        self.show_page([p[0] for p in self.PAGES].index("settings"))
+        if not winsetup.supported():
+            ui.tell(self, "Unattended PC", "Running unattended is set up on Windows only.")
+            return
+        wizard = UnattendedWizard(self, self.store, self.vault)
+        if wizard.exec():
+            notes = wizard.destination["notes"]
+            ui.tell(self, "Unattended PC", "Automatic sign-in is on. Restart the computer to try it: it should "
+                                           "sign in and lock by itself." + ("\n\n" + "\n".join(notes) if notes else ""))
+        self.refresh()
+
     def open_window(self):
         self.showNormal()
         self.raise_()

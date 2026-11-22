@@ -6,6 +6,10 @@
                            (for the system's task scheduler / cron). Does nothing while the window runs.
   python app.py --quit     ask the copy that is running to stop, and wait until it has (used by the installer)
   python app.py --uitest   make every window once, off screen, with made-up data (a self-test)
+  python app.py --unattended   open Settings → Unattended PC (the installer's last page offers it)
+  python app.py --lock-after-boot   Windows: lock when Windows started less than two minutes ago, then
+                           exit (run by the "Lock after start" task; winsetup.py)
+  python app.py --elevated ...   Windows: the part of Unattended PC that needs administrator rights
 """
 import os
 import sys
@@ -34,11 +38,33 @@ def listen(window):
     server.setSocketOptions(QLocalServer.UserAccessOption)
     QLocalServer.removeServer(control_name())   # we hold the lock, so a name left behind is a crashed copy's
 
+    def heard(line):
+        said = bytes(line.readAll())
+        if said.startswith(b"quit"):
+            window.quit()
+        elif said.startswith(b"unattended"):
+            window.open_unattended()
+        elif said.startswith(b"show"):
+            window.open_window()
+
     def connected():
         line = server.nextPendingConnection()
-        line.readyRead.connect(lambda: window.quit() if bytes(line.readAll()).startswith(b"quit") else None)
+        line.readyRead.connect(lambda: heard(line))
     server.newConnection.connect(connected)
     server.listen(control_name())
+
+
+def tell_running(word):
+    """Say a word to the copy that is running (True when it heard)."""
+    from PySide6.QtNetwork import QLocalSocket
+    line = QLocalSocket()
+    line.connectToServer(control_name())
+    if not line.waitForConnected(2000):
+        return False
+    line.write(word)
+    line.waitForBytesWritten(2000)
+    line.disconnectFromServer()
+    return True
 
 
 def quit_running():
@@ -75,6 +101,9 @@ def run_once():
     entries = engine.run_due(store, vault)
     for opened in engine.open_obs(store, vault):
         print(f"obs      {opened['text']}")
+    import winsetup
+    if winsetup.supported():
+        winsetup.sync_wake(store)
     entries = notify.after(store, vault, entries)
     for e in entries:
         print(f"{e['status']:8} {e['kind']:9} {e['when']}  {e['title']}  {e['note']}")
@@ -94,8 +123,8 @@ def uitest():
         from mainwindow import MainWindow
         from store import Store
         from vault import MemoryVault
-        from wizards import (NOTIFY_WIZARDS, FacebookWizard, ObsWizard, WebhookWizard, WixWizard,
-                             WordPressWizard, YouTubeWizard)
+        from wizards import (NOTIFY_WIZARDS, FacebookWizard, ObsWizard, UnattendedWizard, WebhookWizard,
+                             WixWizard, WordPressWizard, YouTubeWizard)
         import engine
         for theme in ("light", "dark"):
             store, vault = Store(), MemoryVault()
@@ -116,7 +145,8 @@ def uitest():
             for wizard in [YouTubeWizard(window, store, vault), FacebookWizard(window, store, vault),
                            WixWizard(window, store, vault), WordPressWizard(window, store, vault),
                            WebhookWizard(window, store, vault), ObsWizard(window, store, vault),
-                           ObsWizard(window, store, vault, existing=store.encoders[-1])] + [w(window, store, vault)
+                           ObsWizard(window, store, vault, existing=store.encoders[-1]),
+                           UnattendedWizard(window, store, vault)] + [w(window, store, vault)
                                                                    for w in NOTIFY_WIZARDS.values()]:
                 for i in range(len(wizard.checks)):
                     wizard.go(i)
@@ -154,6 +184,16 @@ def main(argv):
     if "--version" in argv:
         print(paths.VERSION)
         return 0
+    if "--lock-after-boot" in argv:   # first, and without loading the windows: it must be quick
+        import winsetup
+        try:
+            winsetup.lock_after_boot()
+        except Exception:
+            return 1
+        return 0
+    if "--elevated" in argv:
+        import winsetup
+        return winsetup.elevated_main(argv)
     if "--quit" in argv:
         return quit_running()
     if "--run" in argv:
@@ -169,6 +209,10 @@ def main(argv):
     app = ui.start_app(argv, store.settings["theme"])
     held = lock()
     if held is None:
+        if "--unattended" in argv and tell_running(b"unattended"):
+            return 0
+        if "--tray" not in argv and "--unattended" not in argv and tell_running(b"show"):
+            return 0   # the copy that runs shows its window (both of the installer's last choices can start one)
         QMessageBox.information(None, paths.APP_NAME, "Stream Scheduler is already running. Look for its icon in "
                                                       "the tray (menu bar).")
         return 0
@@ -177,6 +221,8 @@ def main(argv):
     listen(window)
     if "--tray" not in argv or window.tray is None:
         window.show()
+    if "--unattended" in argv:
+        window.open_unattended()
     code = app.exec()
     held.unlock()
     return code

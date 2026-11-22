@@ -67,6 +67,9 @@ Root: HKCU; Subkey: "{#RunKey}"; ValueType: string; ValueName: "{#AppName}"; Val
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+; Off unless ticked: it only opens the explanation (Settings -> Unattended PC); nothing changes before the
+; person reads what automatic sign-in does and agrees to it there.
+Filename: "{app}\{#AppExe}"; Parameters: "--unattended"; Description: "Set this PC up to run unattended (opens the explanation in {#AppName})"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 function IsUpgrade: Boolean;
