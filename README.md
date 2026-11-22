@@ -3,8 +3,10 @@
 <p align="center">Schedules your weekly live streams on <b>YouTube</b> by itself, with the date of each<br>
 stream already in the title, shows the coming stream on your website, and tells you when one needs you.</p>
 
-> **v0.0.7 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
-> site. New in 0.0.7 is the look of the app, **not yet seen on a real Windows PC or Mac**. New since 0.0.5 and **not yet confirmed on real accounts**: alerts (email, Discord, Slack,
+> **v0.0.8 alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and
+> site. New in 0.0.8, **not yet tried with a real OBS or on a real Windows PC**: OBS checked (and
+> opened) before each service, and the optional Unattended PC settings on Windows. The look of 0.0.7
+> is not yet seen on a real Windows PC or Mac. New since 0.0.5 and **not yet confirmed on real accounts**: alerts (email, Discord, Slack,
 > Pushover), thumbnails, playlists and the other YouTube settings, cancelling a stream, WordPress and
 > webhook destinations, and the notice of new versions. Please report what you find.
 
@@ -24,7 +26,8 @@ stream already in the title, shows the coming stream on your website, and tells 
   note (`{note}`), or skip it, without touching the schedule. If the stream already exists, it is
   changed on YouTube and the website. *Cancel* deletes a stream from YouTube.
 - **Thumbnails and YouTube settings.** A thumbnail per schedule; who can watch, playlist, category,
-  delay and stream key per channel, and who can watch and the playlist per schedule too.
+  delay, stream key, and starting and ending automatically with OBS per channel; who can watch, the
+  playlist, and starting and ending automatically per schedule too.
 - **Preview before it is sent.** *Preview what is sent* shows the title, description, time and every
   setting of the next streams, without sending anything.
 - **Alerts.** Be told by email, Discord, Slack or Pushover when a stream could not be scheduled or a
@@ -34,6 +37,17 @@ stream already in the title, shows the coming stream on your website, and tells 
 - **Your website follows along.** After a stream is created on YouTube, a page of your Wix or
   WordPress site is pointed at it, or a web address of your choice is told (a webhook, for Zapier,
   Make and others).
+- **OBS checked before each service.** Connect OBS Studio (28 or newer), on this computer or a second
+  streaming PC on the same network, and choose it in a schedule. By default 55 and 20 minutes before
+  each stream, the app sees whether OBS is open and set to the stream key the YouTube stream is bound
+  to, and alerts you if not (and again when it is fixed). *Check OBS* on a stream, or *Check now*,
+  looks at once. On the computer where the app runs, it can also **open OBS** an hour before (with
+  the profile and scene collection you choose) if OBS is not open yet. The app never goes live, closes
+  OBS or changes a setting in it.
+- **Unattended PC (Windows, optional, off by default).** Automatic sign-in for a standard account made
+  for streaming, the screen locked right after it, and the computer woken from sleep before streams, so
+  the app and OBS get ready with nobody there. A guide explains what it changes and its risks first:
+  see [SECURITY.md](SECURITY.md#unattended-pc-windows).
 - **Guided setup.** A step-by-step guide for every destination and every kind of alert explains what
   to click on the other side, and what each step means for your account's safety.
 - **Backup and new versions.** Save everything but the sign-ins to one file and restore it, also on
@@ -120,6 +134,10 @@ stream is still more than 10 minutes away. A stream is never created twice.
 - **Other websites (webhook).** The app sends each new stream's title, time and link as JSON to a web
   address, where an automation service (Zapier, Make) can update Squarespace or anything else.
   Squarespace itself offers no way for an app to change a page.
+- **OBS.** Switch on Tools → WebSocket Server Settings in OBS (28 or newer) and keep authentication
+  on. The key check needs OBS to use a stream key: if OBS is signed in to YouTube with *Connect
+  account*, the app says the key could not be checked. For OBS on another computer, Windows must let OBS use the private network (its firewall asks
+  once). The connection is not encrypted: keep it on your own network and never forward port 4455.
 - **Thumbnails.** YouTube accepts custom thumbnails only from channels verified by phone
   (youtube.com/verify): JPG or PNG, at most 2 MB.
 - **Alerts** are sent by this app from your computer, so they cannot tell you that the computer is
@@ -140,7 +158,8 @@ stream is still more than 10 minutes away. A stream is never created twice.
 
 ## Not in this alpha
 
-Code signing; installers for Mac and Linux; running before anyone has signed in to the computer;
+Code signing; installers for Mac and Linux; running before anyone has signed in to the computer
+(use automatic sign-in, Settings → Unattended PC);
 Facebook; a guide for Squarespace (use the webhook); other streaming platforms.
 
 ## For developers
@@ -154,6 +173,8 @@ Python and Qt (PySide6), standard library for HTTPS.
 | `engine.py` | which streams are coming, and creating the ones that are due |
 | `recurrence.py`, `titles.py` | when streams are; filling `{date}` into titles |
 | `youtube.py`, `wix.py`, `wordpress.py`, `webhook.py`, `net.py` | the platforms' APIs (`facebook.py` is kept but switched off) |
+| `winsetup.py` | Windows: Unattended PC (the lock and wake tasks, automatic sign-in, the part that runs as administrator) |
+| `obs.py`, `obslaunch.py` | OBS's remote control (obs-websocket 5): a small WebSocket client, read-only requests; finding and opening OBS on this computer |
 | `notify.py`, `updates.py` | alerts by email, Discord, Slack and Pushover; the look for a newer version |
 | `vault.py`, `store.py` | secrets in the keychain; everything else in `config.json` |
 | `ui.py`, `mainwindow.py`, `dialogs.py`, `wizards.py` | the look, the pages, the dialogs, the setup guides |

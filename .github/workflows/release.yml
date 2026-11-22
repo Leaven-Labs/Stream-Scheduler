@@ -8,7 +8,7 @@ on:
       tag:
         description: "Tag of the release to publish (created if missing)"
         required: true
-        default: v0.0.7
+        default: v0.0.8
   push:
     tags: ["v*"]
   pull_request:

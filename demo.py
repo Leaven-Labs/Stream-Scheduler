@@ -40,11 +40,16 @@ def fill(store, vault, now=None):
          "options": {"collection": "Livestream", "item_id": "i1", "item_title": "Sunday stream",
                      "url_field": "videoUrl", "title_field": "title", "publish": False,
                      "page_url": "https://www.example.org/live"}}])
+    store.encoders.extend([
+        {"id": "demo-obs1", "kind": "obs", "name": "Traditional PC", "host": "127.0.0.1", "port": 4455,
+         "local": True, "auth": True},
+        {"id": "demo-obs2", "kind": "obs", "name": "Praise & Worship PC", "host": "192.168.1.42", "port": 4455,
+         "local": False, "auth": True}])
     store.schedules.extend([
         {"id": "demo-s1", "name": "Sunday Service", "enabled": True, "weekdays": [6], "time": "08:00",
          "lead_days": 1, "create_time": "09:00", "title": "Sunday Service - {date}",
          "description": "Join us live this {weekday} at {time}.", "date_format": "long",
-         "destinations": ["demo-yt", "demo-fb"], "overrides": {}},
+         "destinations": ["demo-yt", "demo-fb"], "overrides": {}, "encoder_id": "demo-obs1", "obs_checks": [55, 20]},
         {"id": "demo-s2", "name": "Lent Evening Prayer", "enabled": True, "weekdays": [2], "time": "19:00",
          "lead_days": 2, "create_time": "12:00", "title": "{series}, week {number} | {month} {day}",
          "series": "Lent", "starts": first_lent.strftime("%Y-%m-%d"),

@@ -33,6 +33,14 @@
   - Email: the mail account's password (use an app password) is kept in the keychain; the connection
     to the mail server is always encrypted (SSL or STARTTLS).
   - Pushover: the API token and the user key, both kept in the keychain.
+  - OBS: the password of its remote control (obs-websocket), kept in the keychain. The app only
+    reads from OBS (its version, profiles, scene collections and stream settings); it never starts a
+    stream or changes a setting. OBS's remote control is **not encrypted** (`ws://`, port 4455), so it
+    is for your own network only: never forward that port on your router, and use a VPN such as
+    Tailscale to reach OBS at another site. On this computer, the guide can read the port and password
+    from OBS's own settings file, only when you click *Fill in*. To check the key, the app asks YouTube
+    for the channel's stream keys (`liveStreams`, `part=cdn`) and OBS for its own; they are compared
+    in memory and dropped, never shown, logged or saved. Alerts name a key by its YouTube title only.
 - **What an alert says:** the stream's title, time and link, and the reason something failed. It
   goes only to the services you set up on the Alerts page.
 - **A backup file holds no secrets**: the same as the settings file, in a place you choose.
@@ -45,6 +53,26 @@
   One exception, which Meta's API requires: the one-time exchange of the pasted token, with the App
   secret, is a query to `graph.facebook.com` over HTTPS.
 
+## Unattended PC (Windows)
+
+Off by default, and only turned on in Settings → Unattended PC after a guide shows what it changes.
+The installer's last page only offers to open that guide (unticked).
+
+- **Automatic sign-in** stores the account's password as Windows' protected LSA secret
+  `DefaultPassword`, the same as Sysinternals Autologon and `netplwiz`, never as text in the registry
+  or in a file, and Stream Scheduler does not keep it. **Any administrator of the computer can read
+  it**, so it is refused for administrator accounts: use a standard account made for streaming, with
+  nothing of your own in it.
+- The part that writes it runs as administrator (Windows asks for approval), in a separate copy of
+  the app that asks for the password itself and checks it with Windows; the password is never passed
+  on a command line.
+- **For a few seconds after each start the desktop is unlocked**, until the lock task locks it, and
+  anyone who can switch the computer on reaches the signed-in, locked account without the password.
+- The lock task locks only when Windows started less than two minutes ago; the wake task runs the
+  app's `--run` and can wake the computer from sleep. Both run as the signed-in account, without
+  administrator rights.
+- Turning automatic sign-in off deletes the stored password at once.
+
 ## What you can do
 
 - Turn on two-factor authentication for the Google and Facebook accounts.
@@ -53,7 +81,9 @@
 - To cancel access: remove the destination in the app (this deletes the sign-in from the computer),
   and revoke it at <https://myaccount.google.com/permissions>, delete the key at
   <https://manage.wix.com/account/api-keys>, or revoke the application password in your WordPress
-  profile. Removing a way to be told on the Alerts page deletes its key from the computer; delete the
+  profile. Removing OBS on the Destinations page deletes its password from this computer; change the
+  password in OBS (Tools → WebSocket Server Settings) to end it there. Removing a way to be told on the
+  Alerts page deletes its key from the computer; delete the
   webhook in Discord or Slack, or the token at pushover.net, to end it on their side.
 - Never share a client secret, App secret, access token or stream key, and never commit one to git.
 

@@ -719,7 +719,7 @@ def app_icon():
 
 def draw_icon(p, name, rect, color):
     """A small line drawing in `rect`: upcoming, schedules, destinations, history, settings, shield,
-    warn, youtube or facebook."""
+    warn, youtube, facebook, obs ..."""
     p.save()
     p.setRenderHint(QPainter.Antialiasing)
     p.translate(rect.x(), rect.y())
@@ -816,6 +816,12 @@ def draw_icon(p, name, rect, color):
         p.drawArc(QRectF(3, 8, 10, 8), 60 * 16, 240 * 16)
         p.drawArc(QRectF(11, 8, 10, 8), 240 * 16, 240 * 16)
         p.drawLine(QPointF(9, 12), QPointF(15, 12))
+    elif name == "obs":  # a screen with a stand and a dot: a streaming computer
+        p.drawRoundedRect(QRectF(3, 4.5, 18, 12.5), 2.5, 2.5)
+        p.drawLine(QPointF(12, 17), QPointF(12, 20))
+        p.drawLine(QPointF(8, 20.5), QPointF(16, 20.5))
+        p.setBrush(col)
+        p.drawEllipse(QPointF(12, 10.75), 2.2, 2.2)
     elif name == "youtube":
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(colors["youtube"]))
@@ -848,7 +854,7 @@ class Icon(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        tinted = ("wix", "wordpress", "webhook", "email", "discord", "slack", "pushover")
+        tinted = ("wix", "wordpress", "webhook", "obs", "email", "discord", "slack", "pushover")
         color = "accent" if self.name in tinted and self.color == "sub" else self.color
         draw_icon(p, self.name, QRectF(0, 0, self.width(), self.height()), colors[color])
         p.end()

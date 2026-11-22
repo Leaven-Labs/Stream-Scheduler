@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QFileDialog, QGrid
                                QPlainTextEdit, QScrollArea, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
 import engine
+import obs
 import paths
 import recurrence
 import titles
@@ -223,10 +224,20 @@ class ScheduleDialog(QDialog):
         self.privacy.setCurrentIndex(max(0, self.privacy.findData(s.get("privacy", ""))))
         self.playlist = QLineEdit(s.get("playlist", ""))
         self.playlist.setPlaceholderText("Optional: paste a playlist's link. Empty: as the channel is set.")
+        # starting and ending with OBS: the schedule's own choice, or else the channel's as it is now
+        channel = next((d for d in (store.destination(i) for i in s["destinations"]) if d and d["kind"] == "youtube"),
+                       next((d for d in store.destinations if d["kind"] == "youtube"), None))
+        self.channel_auto = engine.youtube_auto(channel.get("options", {}) if channel else {})
+        self.auto_start = ui.Switch(bool(s["auto_start"]) if s.get("auto_start") is not None else self.channel_auto[0])
+        self.auto_stop = ui.Switch(bool(s["auto_stop"]) if s.get("auto_stop") is not None else self.channel_auto[1])
         tube = QVBoxLayout()
         tube.setSpacing(6)
         tube.addWidget(self.privacy, 0, Qt.AlignLeft)
         tube.addWidget(self.playlist)
+        tube.addWidget(ui.toggle_row(self.auto_start, "Start automatically when OBS connects"))
+        tube.addWidget(ui.toggle_row(self.auto_stop, "End automatically when OBS stops"))
+        tube.addWidget(ui.label("Unless you change them here, these follow the channel's Options on the "
+                                "Destinations page.", "small", wrap=True))
         self.date_format = QComboBox()
         sample = datetime(2027, 11, 15)
         for key in titles.DATE_FORMATS:
@@ -252,6 +263,81 @@ class ScheduleDialog(QDialog):
         else:
             dest_row.addStretch(1)
 
+        self.encoder = QComboBox()
+        self.encoder.addItem("Don't check OBS", "")
+        for e in store.encoders:
+            self.encoder.addItem(e["name"], e["id"])
+        self.encoder.setCurrentIndex(max(0, self.encoder.findData(s.get("encoder_id", ""))))
+        rounds = (engine.obs_rounds(s) + [0])[:2] if s.get("obs_checks") else list(engine.OBS_CHECKS)
+        self.obs_first, self.obs_second = QSpinBox(), QSpinBox()
+        for spin, value in ((self.obs_first, rounds[0]), (self.obs_second, rounds[1])):
+            spin.setRange(0, 600)
+            spin.setValue(value)
+            spin.setFixedWidth(64)
+            pad(spin)
+        self.obs_second.setSpecialValueText("off")
+        self.obs_first.setRange(1, 600)
+        obs_box = QVBoxLayout()
+        obs_box.setSpacing(6)
+        obs_box.addWidget(self.encoder, 0, Qt.AlignLeft)
+        self.obs_when = QWidget()
+        when_row = QHBoxLayout(self.obs_when)
+        when_row.setContentsMargins(0, 0, 0, 0)
+        when_row.setSpacing(8)
+        for w in (ui.label("Check"), self.obs_first, ui.label("and"), self.obs_second,
+                  ui.label("minutes before the start")):
+            when_row.addWidget(w)
+        when_row.addStretch(1)
+        obs_box.addWidget(self.obs_when)
+        self.obs_open = QSpinBox()
+        self.obs_open.setRange(0, 600)
+        self.obs_open.setSpecialValueText("don't")
+        self.obs_open.setValue(engine.obs_open_minutes(s))
+        self.obs_open.setFixedWidth(72)
+        pad(self.obs_open)
+        self.obs_profile, self.obs_collection = QComboBox(), QComboBox()
+        for combo, value, empty in ((self.obs_profile, s.get("obs_profile", ""), "Unchanged"),
+                                    (self.obs_collection, s.get("obs_collection", ""), "Unchanged")):
+            combo.setEditable(True)
+            combo.addItem("")
+            if value:
+                combo.addItem(value)
+            combo.setCurrentText(value)
+            combo.lineEdit().setPlaceholderText(empty)
+            combo.setMinimumWidth(130)
+            combo.setMaximumWidth(170)
+        self.obs_read = ui.button("Read from OBS", "mini", self.read_obs,
+                                  "Fill the lists with the profiles and scene collections of this OBS (it must be open)")
+        self.obs_open_box = QWidget()
+        open_col = QVBoxLayout(self.obs_open_box)
+        open_col.setContentsMargins(0, 0, 0, 0)
+        open_col.setSpacing(6)
+        open_row = QHBoxLayout()
+        open_row.setSpacing(8)
+        for w in (ui.label("Open OBS"), self.obs_open, ui.label("minutes before the start, if it is not open")):
+            open_row.addWidget(w)
+        open_row.addStretch(1)
+        pick_row = QHBoxLayout()
+        pick_row.setSpacing(8)
+        for w in (ui.label("Profile"), self.obs_profile, ui.label("Scene collection"), self.obs_collection,
+                  self.obs_read):
+            pick_row.addWidget(w)
+        pick_row.addStretch(1)
+        open_col.addLayout(open_row)
+        open_col.addLayout(pick_row)
+        obs_box.addWidget(self.obs_open_box)
+        self.obs_remote_note = ui.label("OBS on another computer cannot be opened from here: if it is closed, "
+                                        "the check tells you.", "small", wrap=True)
+        obs_box.addWidget(self.obs_remote_note)
+        self.obs_open.valueChanged.connect(lambda *_: self.show_obs())
+        obs_box.addWidget(ui.label("Is OBS open, and set to the stream key of this schedule's YouTube stream? You "
+                                   "are told on the Alerts page's channels if not. The app never changes OBS."
+                                   if store.encoders else "To check OBS before each stream, add OBS on the "
+                                   "Destinations page.", "small", wrap=True))
+        self.encoder.currentIndexChanged.connect(lambda *_: self.show_obs())
+        self.encoder.setEnabled(bool(store.encoders))
+        self.show_obs()
+
         title_box = QVBoxLayout()
         title_box.setSpacing(5)
         title_box.addWidget(self.title)
@@ -259,7 +345,7 @@ class ScheduleDialog(QDialog):
         rows = [("Name", self.name), ("Repeats", when_box), ("Stream time", self.time),
                 ("Create it", made), ("Title", title_box), ("Date written as", self.date_format),
                 ("Series", self.series), ("Description", self.description), ("Thumbnail", self.thumbnail),
-                ("On YouTube", tube), ("Send to", dest_row)]
+                ("On YouTube", tube), ("Send to", dest_row), ("OBS", obs_box)]
         for i, (text, thing) in enumerate(rows):
             grid.addWidget(ui.label(text, "strong"), i, 0, Qt.AlignTop)
             if isinstance(thing, QWidget):
@@ -301,10 +387,60 @@ class ScheduleDialog(QDialog):
                  privacy=self.privacy.currentData(), playlist=self.playlist.text().strip(),
                  starts=self.starts.value(), until=self.until.value())
         s.pop("once", None)
+        for key in ("encoder_id", "obs_checks", "obs_open", "obs_profile", "obs_collection"):
+            s.pop(key, None)
+        # kept only when the schedule had its own choice, or one is made here: otherwise the channel's follows
+        for key, switch, inherited in (("auto_start", self.auto_start, self.channel_auto[0]),
+                                       ("auto_stop", self.auto_stop, self.channel_auto[1])):
+            if self.schedule.get(key) is not None or switch.isChecked() != inherited:
+                s[key] = switch.isChecked()
+            else:
+                s.pop(key, None)
+        if self.encoder.currentData():
+            s["encoder_id"] = self.encoder.currentData()
+            s["obs_checks"] = [m for m in (self.obs_first.value(), self.obs_second.value()) if m]
+            if self.chosen_encoder().get("local"):
+                s["obs_open"] = self.obs_open.value()
+                s["obs_profile"] = self.obs_profile.currentText().strip() if self.obs_open.value() else ""
+                s["obs_collection"] = self.obs_collection.currentText().strip() if self.obs_open.value() else ""
         if self.repeat.buttons["once"].isChecked():
             s["once"] = self.date.date().toString("yyyy-MM-dd")
             s.update(starts="", until="")
         return s
+
+    def chosen_encoder(self):
+        return self.store.encoder(self.encoder.currentData() or "")
+
+    def show_obs(self):
+        encoder = self.chosen_encoder()
+        local = bool(encoder and encoder.get("local"))
+        self.obs_when.setVisible(bool(encoder))
+        self.obs_open_box.setVisible(local)
+        self.obs_remote_note.setVisible(bool(encoder) and not local)
+        for w in (self.obs_profile, self.obs_collection, self.obs_read):
+            w.setEnabled(self.obs_open.value() > 0)
+
+    def read_obs(self):
+        encoder = self.chosen_encoder()
+        if not encoder:
+            return
+        vault = self.parent().vault if hasattr(self.parent(), "vault") else None
+        self.obs_read.setEnabled(False)
+        self.obs_read.setText("Reading ...")
+
+        def done(found, error):
+            self.obs_read.setEnabled(True)
+            self.obs_read.setText("Read from OBS")
+            if error:
+                ui.tell(self, "Read from OBS", str(error))
+                return
+            for combo, names in ((self.obs_profile, found["profiles"]), (self.obs_collection, found["collections"])):
+                keep = combo.currentText()
+                combo.clear()
+                combo.addItems([""] + names)
+                combo.setCurrentText(keep)
+        ui.run_async(lambda: obs.info(encoder["host"], encoder["port"],
+                                      engine.encoder_password(vault, encoder) if vault else ""), done)
 
     def show_preview(self):
         PreviewDialog(self, self.store, self.value()).exec()
@@ -497,7 +633,7 @@ class YouTubeOptionsDialog(QDialog):
     def __init__(self, parent, dest):
         super().__init__(parent)
         self.setWindowTitle("YouTube options")
-        self.resize(600, 600)
+        self.resize(680, 760)
         col = QVBoxLayout(self)
         col.setContentsMargins(26, 22, 26, 18)
         col.setSpacing(12)

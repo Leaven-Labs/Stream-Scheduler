@@ -1,9 +1,50 @@
-The eighth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
+The ninth alpha of Stream Scheduler: it schedules your YouTube live streams by itself, with the date
 of each stream in the title, shows the coming stream on your website, and tells you when one needs you.
 
 > **Alpha.** YouTube scheduling and the Wix website update are confirmed on a real channel and site.
-> Everything under "New in 0.0.5" that talks to another service passed its automated tests but is
-> **not yet confirmed on real accounts**. Try each one once before relying on it.
+> Everything new in 0.0.8, and everything under "New in 0.0.5" that talks to another service, passed
+> its automated tests but is **not yet confirmed with a real OBS, on a real Windows PC or on real
+> accounts**. Try each one once before relying on it.
+
+## New in 0.0.8
+
+**OBS, checked before each service**
+
+- **Connect OBS** (Destinations → Add OBS): OBS Studio 28 or newer, on this computer or another
+  computer on the same network, through OBS's built-in remote control. A guide shows what to switch
+  on in OBS; on this computer, *Fill in* reads the port and password from OBS's own settings.
+- **Choose an OBS in a schedule.** By default 55 and 20 minutes before each stream, the app checks
+  that OBS is open, and that its stream key is the one the YouTube stream is bound to. If not, you are
+  told on your alert channels, again at the second check if nothing changed, and when it is fixed.
+  Keys are named by their YouTube titles and never shown or saved.
+- **Open OBS before a service** on the computer where the app runs, by default 60 minutes before,
+  with the profile and scene collection you choose, if it is not open already.
+- **Check OBS** on a stream, or *Check now*, looks straight away. The Upcoming page shows the result.
+- **The app only looks.** It never starts or stops a stream, switches a scene, closes OBS or
+  changes a setting in it. Going live stays with the people at the computer.
+- OBS's remote control is not encrypted: keep it on your own network and never open port 4455 on
+  your router.
+
+**Unattended PC (Windows, optional, off by default)**
+
+- **Automatic sign-in** for a standard account made for streaming, so the app and OBS get ready
+  with nobody at the computer. Built in: Sysinternals is not needed.
+- **Lock right after it starts**: only the automatic sign-in at start-up is locked, not a person
+  signing in later.
+- **Wake before streams**: from sleep, a few minutes before a stream is created and before OBS is
+  opened or checked.
+- **Read the risks first.** The guide (Settings → Unattended PC, or the unticked choice on the
+  installer's last page) explains them, and goes on only once you tick "I understand the risks": any
+  administrator of the computer can read the stored password, the desktop is unlocked for a few
+  seconds after each start, and anyone who can switch the computer on reaches the locked account
+  without the password. Administrator accounts are refused. Turning it off deletes the password.
+
+**Also**
+
+- **Start and end automatically, per schedule:** "Start automatically when OBS connects" and "End
+  automatically when OBS stops" are now two switches, on the channel's Options and in each schedule;
+  a schedule that does not change them follows the channel, as before.
+- Starting the app while it runs shows its window instead of a message.
 
 ## New in 0.0.7
 

@@ -161,6 +161,74 @@ class YouTubeFieldsTest(core.Base):
         self.assertEqual(self.net.calls, [])
 
 
+class AutoStartStopTest(core.Base):
+    """Starting and ending with OBS (enableAutoStart, enableAutoStop): a schedule's own choice wins, each
+    on its own; a schedule that has none follows the channel."""
+
+    def setUp(self):
+        super().setUp()
+        self.store.schedules[0]["destinations"] = ["yt"]
+
+    def sent(self):
+        made = json.loads(calls(self, "liveBroadcasts?", "POST")[-1]["data"])["contentDetails"]
+        return made["enableAutoStart"], made["enableAutoStop"]
+
+    def test_a_schedule_overrides_auto_start_alone(self):
+        self.store.schedules[0]["auto_start"] = False
+        engine.run_due(self.store, self.vault, SAT)
+        self.assertEqual(self.sent(), (False, True))
+
+    def test_a_schedule_overrides_auto_stop_alone(self):
+        self.store.destinations[0]["options"].update(auto_start=False, auto_stop=False)
+        self.store.schedules[0]["auto_stop"] = True
+        engine.run_due(self.store, self.vault, SAT)
+        self.assertEqual(self.sent(), (False, True))
+
+    def test_a_schedule_with_neither_follows_the_channel(self):
+        self.store.destinations[0]["options"].update(auto_start=False, auto_stop=True)
+        engine.run_due(self.store, self.vault, SAT)
+        self.assertEqual(self.sent(), (False, True))
+        self.assertEqual(engine.youtube_auto({}), (True, True))   # a channel that never set them: YouTube's default
+        o = engine.youtube_options(self.store.schedules[0], self.store.destinations[0])
+        self.assertEqual((o["auto_start"], o["auto_stop"]), (False, True))
+        self.store.schedules[0].update(auto_start=None)   # None counts as not set
+        o = engine.youtube_options(self.store.schedules[0], self.store.destinations[0])
+        self.assertFalse(o["auto_start"])
+
+    def test_an_update_sends_them_and_keeps_the_rest(self):
+        engine.run_due(self.store, self.vault, SAT)
+        current = {"boundStreamId": "key1", "boundStreamLastUpdateTimeMs": "x", "enableAutoStart": True,
+                   "enableAutoStop": True, "enableDvr": True, "latencyPreference": "low",
+                   "monitorStream": {"enableMonitorStream": True, "broadcastStreamDelayMs": 0, "embedHtml": "<i>"}}
+        self.net.routes = [("GET liveBroadcasts", 200, {"items": [{"id": "yt123", "snippet": {},
+                                                                    "contentDetails": current}]})] + core.OK_ROUTES
+        item = engine.find(self.store, "s1", "2027-11-14", SAT)
+        engine.sync(self.store, self.vault, item, SAT)
+        self.assertEqual([c for c in calls(self, "part=contentDetails", "PUT")], [])   # nothing changed: not sent
+        self.store.schedules[0]["auto_stop"] = False
+        item = engine.find(self.store, "s1", "2027-11-14", SAT)
+        done = engine.sync(self.store, self.vault, item, SAT)
+        self.assertEqual(done[0]["status"], "created")
+        body = json.loads(calls(self, "part=contentDetails", "PUT")[0]["data"])
+        self.assertEqual(body["id"], "yt123")
+        self.assertEqual(body["contentDetails"], {
+            "enableAutoStart": True, "enableAutoStop": False, "enableDvr": True, "latencyPreference": "low",
+            "monitorStream": {"enableMonitorStream": True, "broadcastStreamDelayMs": 0}})
+
+    def test_a_refused_update_is_a_note(self):
+        engine.run_due(self.store, self.vault, SAT)
+        self.store.schedules[0]["auto_start"] = False
+        self.net.routes = [("part=contentDetails", 400, {"error": {"message": "Invalid"}})] + core.OK_ROUTES
+        done = engine.sync(self.store, self.vault, engine.find(self.store, "s1", "2027-11-14", SAT), SAT)
+        self.assertEqual(done[0]["status"], "created")
+        self.assertIn("Starting and ending with OBS could not be changed", done[0]["note"])
+
+    def test_preview_shows_both(self):
+        self.store.schedules[0]["auto_stop"] = False
+        lines = dict(engine.preview(self.store, self.store.schedules[0], 1, SAT)[0]["destinations"][0]["lines"])
+        self.assertEqual((lines["Starts when OBS connects"], lines["Ends when OBS stops"]), ("Yes", "No"))
+
+
 class WebsitesTest(core.Base):
     def setUp(self):
         super().setUp()

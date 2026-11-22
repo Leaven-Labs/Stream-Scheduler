@@ -1,9 +1,11 @@
-"""The step-by-step guides: connecting a destination (a YouTube channel, a website) and setting up a
-way to be told (email, Discord, Slack, Pushover).
+"""The step-by-step guides: connecting a destination (a YouTube channel, a website), connecting OBS on
+this or another computer, and setting up a way to be told (email, Discord, Slack, Pushover).
 
 Each guide explains what to click on the platform's own pages, says why each step is safe, and ends
 by saving the sign-in in the system keychain (vault.py). Nothing is saved before the last step.
 """
+import sys
+
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -12,6 +14,9 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QFrame, QGridLayout, QHBoxLay
 import facebook
 import net
 import notify
+import obs
+import obslaunch
+import winsetup
 import ui
 import webhook
 import wordpress
@@ -84,7 +89,8 @@ class YouTubeOptions(QWidget):
         wanted = self.stream.findData(options.get("stream_id", ""))
         self.stream.setCurrentIndex(wanted if wanted > 0 else min(1, self.stream.count() - 1))
         self.kids = ui.Switch(options.get("made_for_kids", False))
-        self.auto = ui.Switch(options.get("auto_start", True))
+        self.auto_start = ui.Switch(options.get("auto_start", True))
+        self.auto_stop = ui.Switch(options.get("auto_stop", True))
         self.latency = QComboBox()
         for key, text in youtube.LATENCY:
             self.latency.addItem(text, key)
@@ -99,8 +105,10 @@ class YouTubeOptions(QWidget):
         rows = [("Who can watch", self.privacy, "A schedule can say otherwise for its own streams."),
                 ("Stream key", self.stream, "With a key chosen, your encoder (OBS, ATEM ...) keeps the same key every week."),
                 ("Made for kids", self.kids, "YouTube requires an answer. Most services and events are not."),
-                ("Start and stop by itself", self.auto,
-                 "The broadcast goes live when your encoder starts sending, and ends when it stops."),
+                ("Start automatically", self.auto_start,
+                 "Goes live when OBS (or your encoder) connects. Off: press Go live in YouTube Studio."),
+                ("End automatically", self.auto_stop,
+                 "Ends when OBS stops sending. Off: end it in YouTube Studio. Schedules can say otherwise."),
                 ("Delay", self.latency, "How far viewers are behind the camera. Lower delays mean lower picture "
                                         "quality, and ultra low has no captions or 1440p and above."),
                 ("Category", self.category, ""),
@@ -115,8 +123,8 @@ class YouTubeOptions(QWidget):
     def value(self):
         return {"privacy": self.privacy.currentData(), "stream_id": self.stream.currentData(),
                 "stream_title": self.stream.currentText() if self.stream.currentData() else "",
-                "made_for_kids": self.kids.isChecked(), "auto_start": self.auto.isChecked(),
-                "auto_stop": self.auto.isChecked(), "latency": self.latency.currentData(),
+                "made_for_kids": self.kids.isChecked(), "auto_start": self.auto_start.isChecked(),
+                "auto_stop": self.auto_stop.isChecked(), "latency": self.latency.currentData(),
                 "category": self.category.currentData(), "playlist": self.playlist.text().strip()}
 
     def problem(self):
@@ -962,6 +970,334 @@ class WebhookWizard(Wizard):
         self.store.destinations.append(dest)
         self.store.save()
         self.destination = dest
+        return ""
+
+
+class ObsWizard(Wizard):
+    """Connect OBS on this computer or another one on the network (an "encoder"), so the app can look
+    at it before a service. It only reads from OBS; it never starts a stream or changes a setting."""
+
+    def __init__(self, parent, store, vault, existing=None):
+        super().__init__(parent, "Connect OBS", "obs")
+        self.store, self.vault = store, vault
+        self.destination = None   # the encoder, once saved (the name the other guides use)
+        self.found = None
+
+        self.add_step("Before you start", "Let Stream Scheduler look at OBS", [
+            ui.rich("Stream Scheduler can look at OBS Studio before a service, to see that it is open and "
+                    "ready. OBS can be on <b>this computer</b> or on <b>another computer on the same network</b>, "
+                    "such as a second streaming PC."),
+            ui.rich("It only <b>looks</b>. It never starts or stops a stream, switches a scene or changes a "
+                    "setting in OBS: going live stays with the people at the computer."),
+            steps("<b>OBS Studio 28 or newer.</b> Its remote control (the WebSocket server) is built in.",
+                  "For another computer: its <b>name or address</b> on the network, such as 192.168.1.20.",
+                  "About five minutes."),
+            ui.callout("How this keeps the streaming computer safe",
+                       f"OBS's remote control is protected by a password, which the app keeps in "
+                       f"<b>{vault.where()}</b>, encrypted with your login. The connection is not encrypted, "
+                       "so it is for your own network only: never open port 4455 to the internet on your "
+                       "router. To reach OBS at another site, use a VPN such as Tailscale.")])
+
+        self.add_step("In OBS", "Switch on OBS's remote control", [
+            steps("On the computer with OBS, open <b>OBS Studio</b>.",
+                  "Choose <b>Tools → WebSocket Server Settings</b>.",
+                  "Tick <b>Enable WebSocket server</b>.",
+                  "Leave <b>Enable Authentication</b> ticked, so a password is needed. OBS makes one for you.",
+                  "Leave the <b>Server Port</b> at <b>4455</b> unless you have a reason to change it.",
+                  "Click <b>Show Connect Info</b> and keep it open: it shows the address, port and password "
+                  "for the next step. Then click <b>OK</b>."),
+            ui.callout("OBS on another computer",
+                       "When the WebSocket server is switched on, Windows may ask whether OBS may use the "
+                       "network. Allow it on <b>private networks</b> only. If you missed that question, allow "
+                       "<b>OBS Studio</b> in Windows Security → Firewall & network protection → Allow an app "
+                       "through firewall.", "warn", "warn")])
+
+        self.place = QComboBox()
+        self.place.addItem("This computer", "local")
+        self.place.addItem("Another computer on the network", "remote")
+        self.name = QLineEdit("OBS on this computer")
+        self.host = QLineEdit()
+        self.host.setPlaceholderText("Its name or address, such as 192.168.1.20")
+        self.port = QLineEdit(str(obs.DEFAULT_PORT))
+        self.password = secret_field("The password from Show Connect Info")
+        self.fill_button = ui.button("Fill in from OBS on this computer", "", self.fill_in,
+                                     "Read the port and password from OBS's own settings on this computer")
+        self.fill_state = ui.label("", "sub", wrap=True)
+        self.fill_row = action_row(self.fill_button, self.fill_state)
+        self.program = (existing or {}).get("program", "")
+        self.program_button = ui.button("Choose ...", "", self.choose_program,
+                                        "Choose the OBS program, if it is not where OBS installs itself")
+        self.program_state = ui.label("", "sub", wrap=True)
+        self.program_row = action_row(self.program_button, self.program_state)
+        self.test_button = ui.button("Connect to OBS", "primary", self.test)
+        self.test_state = ui.label("", "sub", wrap=True)
+        self.fill_note = ui.rich("<b>Fill in</b> reads the port and password from OBS's own settings on this "
+                                 "computer, so you need not copy them. Nothing else of OBS's is read.")
+        self.add_step("Connect", "Connect to OBS", [
+            field_grid([("OBS is on", self.place), ("Name in this app", self.name), ("Computer", self.host),
+                        ("Port", self.port), ("Password", self.password)]),
+            self.fill_row, action_row(self.test_button, self.test_state), self.fill_note, self.program_row,
+            ui.callout("Stream Scheduler in Docker",
+                       "Choose <b>Another computer on the network</b> and type the address of the computer "
+                       "with OBS: the container is a computer of its own.")],
+            check=self.check)
+        self.place.currentIndexChanged.connect(self.placed)
+        for edit in (self.host, self.port, self.password):
+            edit.textChanged.connect(self.changed)
+        if existing:
+            self.place.setCurrentIndex(0 if existing.get("local") else 1)
+            self.name.setText(existing.get("name", ""))
+            if not existing.get("local"):
+                self.host.setText(existing.get("host", ""))
+            self.port.setText(str(existing.get("port", obs.DEFAULT_PORT)))
+        self.placed()
+        self.ready()
+
+    def local(self):
+        return self.place.currentData() == "local"
+
+    def placed(self):
+        local = self.local()
+        self.host.setEnabled(not local)
+        if local:
+            self.host.clear()
+            self.host.setPlaceholderText("This computer")
+        else:
+            self.host.setPlaceholderText("Its name or address, such as 192.168.1.20")
+        self.fill_row.setVisible(local)
+        self.fill_note.setVisible(local)
+        self.program_row.setVisible(local)
+        self.show_program()
+        names = ("OBS on this computer", "OBS on another computer", "OBS")
+        if self.name.text().strip() in names or not self.name.text().strip():
+            self.name.setText(names[0] if local else names[1])
+        self.changed()
+
+    def show_program(self):
+        found = obslaunch.find(self.program)
+        if found:
+            where = "chosen by you" if self.program else "found"
+            self.program_state.setText(f"OBS program ({where}): {found.replace('flatpak:', 'Flatpak ')}. "
+                                       "Schedules can open it before a service.")
+        else:
+            self.program_state.setText("The OBS program was not found where OBS installs itself. Choose it, so "
+                                       "schedules can open OBS before a service (optional).")
+
+    def choose_program(self):
+        from PySide6.QtWidgets import QFileDialog
+        kind = {"win32": "OBS (obs64.exe)", "darwin": "OBS (OBS.app)"}.get(sys.platform, "OBS (obs)")
+        path, _ = QFileDialog.getOpenFileName(self, "Choose the OBS program", self.program or "", f"{kind} (*)")
+        if path:
+            self.program = path
+            self.show_program()
+
+    def changed(self):
+        self.found = None
+        self.test_state.setText("")
+
+    def target(self):
+        """(host, port) from the fields, or ObsError."""
+        if self.local():
+            host = obs.LOCAL
+        else:
+            host, port = obs.address(self.host.text())
+            if self.host.text().strip().count(":") == 1:   # "192.168.1.20:4456": the port typed with it wins
+                return host, port
+        text = self.port.text().strip()
+        if not text.isdigit() or not 0 < int(text) < 65536:
+            raise obs.ObsError("The port is a number, such as 4455.", reason="address")
+        return host, int(text)
+
+    def fill_in(self):
+        found = obs.local_settings()
+        if found is None:
+            self.fill_state.setText("")
+            self.error.setText("OBS's settings were not found on this computer. Is OBS 28 or newer installed "
+                               "here? You can type the port and password instead.")
+            return
+        self.error.setText("")
+        self.port.setText(str(found["port"]))
+        self.password.setText(found["password"] if found["auth"] else "")
+        self.fill_state.setText("✓  Filled in." if found["enabled"] else
+                                "Filled in, but the WebSocket server is switched off in OBS: switch it on "
+                                "(step 2), then connect.")
+
+    def test(self):
+        self.error.setText("")
+        try:
+            host, port = self.target()
+        except obs.ObsError as exc:
+            self.error.setText(str(exc))
+            return
+        password = self.password.text()
+        self.test_button.setEnabled(False)
+        self.test_state.setText("Connecting ...")
+        ui.run_async(lambda: obs.info(host, port, password), self.tested)
+
+    def tested(self, found, error):
+        self.test_button.setEnabled(True)
+        if error:
+            self.found = None
+            self.test_state.setText("")
+            self.error.setText(str(error))
+            return
+        self.found = found
+        self.error.setText("")
+        self.test_state.setText(f"✓  Connected: {obs.describe(found)}. Click Finish to save.")
+
+    def check(self):
+        if self.found:
+            return self.vault.available() if self.password.text() else ""
+        if self.test_button.isEnabled():
+            self.test()
+        return self.error.text() or "Connecting to OBS ... click Finish when it says Connected."
+
+    def finish(self):
+        host, port = self.target()
+        password = self.password.text()
+        encoder = {"id": new_id(), "kind": "obs", "name": self.name.text().strip() or "OBS", "host": host,
+                   "port": port, "local": self.local(), "auth": bool(password)}
+        if self.local() and self.program:
+            encoder["program"] = self.program
+        if password:
+            try:
+                self.vault.set(encoder["id"], "password", password)
+            except VaultError as exc:
+                return str(exc)
+        self.password.clear()
+        self.store.encoders.append(encoder)
+        self.store.save()
+        self.destination = encoder
+        return ""
+
+
+RISKS = ("<b>What it changes:</b>"
+         "<ul style='margin-left:-18px; line-height:140%'>"
+         "<li>The account's password is stored on this computer. Windows protects it, but <b>any administrator "
+         "of this computer can read it</b>.</li>"
+         "<li>For <b>a few seconds after each start</b>, the desktop is unlocked. Anyone who can restart this "
+         "computer can use the account in that time.</li>"
+         "<li>Anyone who can switch this computer on reaches the signed-in, locked account <b>without knowing "
+         "the password</b>.</li></ul>"
+         "<b>Only use this with an account made for streaming</b>: a standard account, not an administrator, with "
+         "no email, files or saved passwords of your own. Never use your own account.<br><br>"
+         "Turning this off deletes the stored password straight away.")
+
+
+class UnattendedWizard(Wizard):
+    """Run this PC unattended: automatic sign-in for this (standard) account, the lock right after it, and
+    waking before streams. Explains the risks first; nothing changes before Finish."""
+
+    def __init__(self, parent, store, vault):
+        super().__init__(parent, "Run this PC unattended", "shield")
+        self.store, self.vault = store, vault
+        self.destination = None
+        self.domain, self.user = winsetup.current_account()
+        self.account = winsetup.account_name(self.domain, self.user) or "this account"
+        try:
+            self.admin = winsetup.is_admin_account(self.domain, self.user) if winsetup.supported() else False
+        except winsetup.WinSetupError:
+            self.admin = False
+
+        self.agree = ui.Switch(False)
+        self.add_step("What it does", "Run this PC unattended", [
+            ui.rich("When this is on, Windows signs in to <b>" + self.account + "</b> by itself every time the "
+                    "computer starts, and Stream Scheduler locks the screen a few seconds later. Stream Scheduler "
+                    "and OBS can then get ready for services with nobody at the computer."),
+            ui.callout("Read this before you go on", RISKS, "warn", "warn"),
+            ui.toggle_row(self.agree, "I understand the risks")],
+            check=lambda: "" if self.agree.isChecked() else "Tick “I understand the risks” to go on.")
+
+        account_widgets = [
+            ui.rich(f"Automatic sign-in is for the account Stream Scheduler runs in now: <b>{self.account}</b>. "
+                    "Its sign-ins (YouTube, websites, OBS) are kept for this account only, so set up Stream "
+                    "Scheduler in the account that will stream.")]
+        if self.admin:
+            account_widgets.append(ui.callout(
+                "This is an administrator account",
+                "Automatic sign-in is refused for administrator accounts. Make a standard account for "
+                "streaming, sign in to it, install Stream Scheduler there and set it up, then come back here.",
+                "warn", "warn"))
+        account_widgets += [
+            steps("To make a streaming account: <b>Settings → Accounts → Other users → Add account</b>.",
+                  "Click <b>I don't have this person's sign-in information</b>, then <b>Add a user without a "
+                  "Microsoft account</b>.",
+                  "Name it, for example <b>Streaming</b>, and give it a password. Leave it a <b>Standard</b> "
+                  "user.",
+                  "Sign in to it, install OBS and Stream Scheduler there, and set them up.")]
+        if winsetup.hello_only():
+            account_widgets.append(ui.callout(
+                "Windows Hello sign-in only",
+                "This computer only allows Windows Hello sign-in for Microsoft accounts, which stops automatic "
+                "sign-in for them. Turn off <b>Settings → Accounts → Sign-in options → For improved security, "
+                "only allow Windows Hello sign-in for Microsoft accounts</b>, or use a local account.",
+                "warn", "warn"))
+        self.add_step("The account", "Use a standard account made for streaming", account_widgets,
+                      check=lambda: "This is an administrator account: use a standard account made for streaming."
+                      if self.admin else "")
+
+        self.lock = ui.Switch(True)
+        self.wake = ui.Switch(True)
+        allowed = winsetup.wake_timers_allowed() if winsetup.supported() else None
+        wake_note = ("" if allowed is not False else
+                     ui.callout("Wake timers are off", "This computer's power plan does not let tasks wake it. In "
+                                "<b>Control Panel → Power Options → Change plan settings → Change advanced power "
+                                "settings → Sleep → Allow wake timers</b>, choose <b>Enable</b>.", "warn", "warn"))
+        widgets = [
+            ui.toggle_row(self.lock, "Lock this computer right after it starts"),
+            ui.label("Only the automatic sign-in at start-up is locked; a person who signs in later is not.",
+                     "small", wrap=True),
+            ui.toggle_row(self.wake, "Wake this computer before streams"),
+            ui.label("From sleep, a few minutes before each stream is created and before OBS is opened or "
+                     "checked. Not from a full shut-down.", "small", wrap=True),
+            steps("<b>Lock, never sign out.</b> Tell everyone who uses this computer to lock it (Windows key + L). "
+                  "After signing out, nothing runs until the next restart.",
+                  "<b>Lock when idle:</b> in <b>Settings → Accounts → Sign-in options</b>, set <b>If you've been "
+                  "away, when should Windows require you to sign in again?</b> to the shortest choice, and let the "
+                  "screen turn off after about 15 minutes.",
+                  "<b>After a power cut</b>, the computer starts again by itself only if its BIOS or UEFI setting "
+                  "<b>Restore on AC power loss</b> is <b>On</b>.",
+                  "<b>BitLocker with a start-up PIN</b> stops before Windows, so automatic sign-in cannot help. "
+                  "BitLocker without a PIN, the usual setup, is fine.",
+                  "OBS's <b>Display Capture</b> shows black while the computer is locked. Cameras, capture cards, "
+                  "NDI and sound are not affected.")]
+        if wake_note:
+            widgets.insert(4, wake_note)
+        self.add_step("Windows settings", "Lock, wake, and what to tell people", widgets)
+
+        self.add_step("Turn on", "Turn on automatic sign-in", [
+            steps("Click <b>Finish</b>. Windows asks for <b>administrator approval</b>: approve it, or ask whoever "
+                  "looks after this computer to type an administrator's password.",
+                  f"A small window asks for the Windows password of <b>{self.account}</b>. Windows checks it "
+                  "before it is kept, so a typo cannot leave the computer stuck at the sign-in screen.",
+                  "Restart the computer to try it: it should sign in and lock by itself."),
+            ui.callout("Where the password goes",
+                       "Only into Windows' own protected store for automatic sign-in (an LSA secret), the same "
+                       "place Sysinternals Autologon and Windows' netplwiz use. It is not written to any file or "
+                       "to the registry as text, and Stream Scheduler does not keep it.")])
+        self.ready()
+
+    def finish(self):
+        if not winsetup.supported():
+            return "Automatic sign-in is only for Windows."
+        code = winsetup.run_elevated(["autologon-on", "--domain", self.domain, "--user", self.user])
+        if code == winsetup.CANCELLED:
+            return "Nothing was changed: the administrator approval or the password was not given."
+        if code == winsetup.REFUSED_ADMIN:
+            return "Nothing was changed: this is an administrator account."
+        if code != winsetup.DONE:
+            return "Automatic sign-in could not be turned on. Nothing was changed."
+        notes = []
+        try:
+            winsetup.set_lock_task(self.lock.isChecked())
+        except winsetup.WinSetupError as exc:
+            notes.append(str(exc))
+        self.store.settings["wake_before_stream"] = self.wake.isChecked()
+        self.store.save()
+        problem = winsetup.sync_wake(self.store)
+        if problem:
+            notes.append(f"The wake task could not be made: {problem}")
+        self.destination = {"notes": notes}
         return ""
 
 

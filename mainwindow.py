@@ -24,8 +24,9 @@ import titles
 import ui
 import updates
 import vault as vault_module
+import winsetup
 from dialogs import KIND_NAMES, AboutDialog, OverrideDialog, ScheduleDialog, YouTubeOptionsDialog, time_edit
-from wizards import NOTIFY_WIZARDS, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
+from wizards import NOTIFY_WIZARDS, ObsWizard, UnattendedWizard, WebhookWizard, WixWizard, WordPressWizard, YouTubeWizard
 
 CHECK_EVERY_MS = 60_000
 WIZARDS = {"youtube": YouTubeWizard, "wix": WixWizard, "wordpress": WordPressWizard, "webhook": WebhookWizard}
@@ -111,7 +112,8 @@ class UpcomingPage(Page):
                          "What your schedules will create next. Each stream is created by itself.")
         self.check_button = ui.button("Check now", clicked=window.check_all,
                                       tip="See that every scheduled stream is still on YouTube and on the website, "
-                                          "put back what is missing, and create what is due")
+                                          "put back what is missing, create what is due, and look at OBS for "
+                                          "the streams of the next three hours")
         self.actions.addWidget(self.check_button)
 
     def fill(self):
@@ -196,6 +198,9 @@ class UpcomingPage(Page):
                     entry["status"] == "failed" or entry.get("note")):
                 mid.addWidget(ui.label(f"{KIND_NAMES[dest['kind']]}: {entry['note']}",
                                        "error" if entry["status"] == "failed" else "small", wrap=True))
+        encoder = self.store.encoder(item["schedule"].get("encoder_id"))
+        if encoder and not skipped:
+            mid.addWidget(self.obs_line(item, encoder))
         row.addLayout(mid, 1)
         buttons = QVBoxLayout()
         buttons.setSpacing(6)
@@ -209,6 +214,10 @@ class UpcomingPage(Page):
                                             "is missing"))
             buttons.addWidget(ui.button("Edit", "mini", lambda: self.edit(item),
                                         "Another title, description or time for this one stream"))
+        if encoder and not skipped:
+            buttons.addWidget(ui.button("Check OBS", "mini", lambda: self.check_obs(item),
+                                        f"See now whether OBS on {encoder['name']} is open and set to this "
+                                        "stream's key. No alert is sent."))
         on_youtube = any(e and e["status"] == "created" and d["kind"] == "youtube" for d, e in item["targets"])
         if on_youtube and not skipped:
             buttons.addWidget(ui.button("Cancel", "mini", lambda: self.cancel(item),
@@ -218,6 +227,23 @@ class UpcomingPage(Page):
         buttons.addStretch(1)
         row.addLayout(buttons)
         return card
+
+    def obs_line(self, item, encoder):
+        found = engine.obs_state(self.store).get(engine.obs_key(item))
+        if found and "ok" in found:
+            at = titles.format_time(datetime.fromisoformat(found["at"]), self.clock)
+            summary = engine.obs_summary(found)
+            head = "" if encoder["name"] in summary else f"OBS on {encoder['name']}: "
+            text = f"{head}{'✓  ' if found['ok'] else ''}{summary}  (checked {at})"
+            return ui.label(text, "good" if found["ok"] else "error", wrap=True)
+        if found and "opened" in found:
+            return ui.label(f"OBS on {encoder['name']}: {found['opened']['text']}",
+                            "error" if found["opened"]["result"] == "failed" else "small", wrap=True)
+        first = engine.obs_first_check(item)
+        return ui.label(f"OBS on {encoder['name']}: checked from {short_day(first, self.clock)}", "small", wrap=True)
+
+    def check_obs(self, item):
+        self.window_.work(lambda: engine.obs_check_now(self.store, self.vault, item=item) and [], loud=True)
 
     def override(self, item):
         return item["schedule"].setdefault("overrides", {}).setdefault(item["date"], {})
@@ -363,6 +389,8 @@ class DestinationsPage(Page):
         menu.addAction("Another service (webhook)", lambda: self.add(WebhookWizard))
         site.setMenu(menu)
         self.actions.addWidget(site)
+        self.actions.addWidget(ui.button("Add OBS", "", self.add_encoder,
+                                         "Let the app look at OBS on this or another computer before services"))
         self.results = {}
 
     def fill(self):
@@ -415,11 +443,88 @@ class DestinationsPage(Page):
                                         "send here stay as they are."), 0, Qt.AlignTop)
             row.addWidget(ui.button("Remove", "mini", lambda _=False, d=d: self.remove(d)), 0, Qt.AlignTop)
             self.col.addWidget(card)
+        if self.store.encoders:
+            self.col.addWidget(ui.label("OBS", "caps"))
+        for e in self.store.encoders:
+            self.col.addWidget(self.encoder_card(e))
         self.col.addWidget(ui.callout(
             "Where your sign-ins are kept",
             f"Tokens and client secrets are stored in <b>{self.vault.where()}</b>, encrypted with your login to this "
             "computer. They are never written to the app's settings file, and each is sent only to its own "
-            "platform (Google, or your website). Removing a destination deletes its sign-in from this computer."))
+            "platform (Google, your website, or OBS on your network). Removing a destination deletes its sign-in "
+            "from this computer."))
+
+    def encoder_card(self, e):
+        card = ui.card()
+        row = QHBoxLayout(card)
+        row.setContentsMargins(18, 14, 16, 14)
+        row.setSpacing(14)
+        row.addWidget(ui.Icon("obs", 34), 0, Qt.AlignTop)
+        mid = QVBoxLayout()
+        mid.setSpacing(4)
+        mid.addWidget(ui.label(e["name"], "big"))
+        where = "This computer" if e.get("local") else f"{e['host']}"
+        mid.addWidget(ui.label(f"OBS Studio  ·  {where}  ·  port {e['port']}", "sub", wrap=True))
+        kind, text = self.results.get(e["id"], ("small", f"Password kept in {self.vault.where()}" if e.get("auth", True)
+                                                 else "OBS asks for no password"))
+        mid.addWidget(ui.label(text, kind, wrap=True))
+        row.addLayout(mid, 1)
+        row.addWidget(ui.button("Test", "mini", lambda _=False, e=e: self.test_encoder(e),
+                                "Connect to OBS now and show what it answers"), 0, Qt.AlignTop)
+        row.addWidget(ui.button("Change", "mini", lambda _=False, e=e: self.change_encoder(e),
+                                "Go through the guide again: another address, port or password"), 0, Qt.AlignTop)
+        row.addWidget(ui.button("Remove", "mini", lambda _=False, e=e: self.remove_encoder(e)), 0, Qt.AlignTop)
+        return card
+
+    def add_encoder(self):
+        wizard = ObsWizard(self, self.store, self.vault)
+        if wizard.exec():
+            self.refresh()
+
+    def change_encoder(self, encoder):
+        """Run the guide again; the encoder keeps its id, so the schedules that use it stay with it."""
+        wizard = ObsWizard(self, self.store, self.vault, existing=encoder)
+        if not wizard.exec():
+            return
+        new = wizard.destination
+        self.store.encoders.remove(new)
+        try:
+            if new.get("auth"):
+                self.vault.move("obs", new["id"], encoder["id"])
+            else:
+                self.vault.forget(encoder["id"], "obs")
+        except vault_module.VaultError as exc:
+            self.vault.forget(new["id"], "obs")
+            ui.tell(self, "Change OBS", f"{exc}\n\nNothing was changed.")
+            return
+        new["id"] = encoder["id"]
+        self.store.encoders[self.store.encoders.index(encoder)] = new
+        self.results.pop(encoder["id"], None)
+        self.store.save()
+        self.refresh()
+
+    def test_encoder(self, encoder):
+        self.results[encoder["id"]] = ("small", "Connecting ...")
+        self.refresh()
+
+        def done(line, error):
+            self.results[encoder["id"]] = ("error", str(error)) if error else ("good", f"✓  Works: {line}")
+            self.refresh()
+        ui.run_async(lambda: engine.test_encoder(self.vault, encoder), done)
+
+    def remove_encoder(self, encoder):
+        users = [s["name"] for s in self.store.schedules if s.get("encoder_id") == encoder["id"]]
+        more = f" These schedules will no longer check OBS: {', '.join(users)}." if users else ""
+        if not ui.ask(self, "Remove OBS", f"Remove “{encoder['name']}” and delete its password from this computer?"
+                                          f"{more} Nothing changes in OBS itself."):
+            return
+        self.vault.forget(encoder["id"], "obs")
+        self.store.encoders.remove(encoder)
+        for s in self.store.schedules:
+            if s.get("encoder_id") == encoder["id"]:
+                s.pop("encoder_id")
+        self.store.save()
+        self.refresh()
 
     def add(self, wizard_class):
         wizard = wizard_class(self, self.store, self.vault)
@@ -592,6 +697,10 @@ class AlertsPage(Page):
               ("summary", "Weekly summary",
                "The streams of the coming seven days and whether each one is in place. Silence then means "
                "something is wrong."),
+              ("obs", "OBS is not ready",
+               "Before a service whose schedule names an OBS: OBS is not open, or not set to the stream key the "
+               "YouTube stream is bound to. Told again at the later check if it still is not, and told when it "
+               "is fixed."),
               ("created", "A stream was scheduled", "Each new stream with its link, for example to share it.")]
 
     def __init__(self, window):
@@ -751,6 +860,8 @@ class SettingsPage(Page):
              "The app stays in the tray (menu bar) so streams are still scheduled.", tray),
             ("Start when I log in", "Starts hidden in the tray. Without this, open the app before a stream is due; "
                                     "it catches up on what it missed.", auto)])
+        if winsetup.supported():
+            self.unattended_section()
         self.section("New versions", [
             ("Tell me about new versions", "Once a day the app asks GitHub for this project's list of releases. "
              "Nothing about you is sent, and nothing is downloaded or installed by itself.", newer),
@@ -773,6 +884,66 @@ class SettingsPage(Page):
     def set(self, key, value):
         self.store.settings[key] = value
         self.store.save()
+
+    def unattended_section(self):
+        """Settings → Unattended PC (Windows): automatic sign-in, the lock after it, waking before streams."""
+        state = winsetup.autologon_state()
+        mine = winsetup.autologon_is_mine()
+        if mine:
+            hint = (f"On for {winsetup.account_name(state['domain'], state['user'])}: Windows signs in to this "
+                    "account by itself at every start. Turning it off deletes the stored password.")
+            button = ui.button("Turn off ...", clicked=self.unattended_off)
+        elif state["on"]:
+            hint = (f"Windows signs in to another account by itself "
+                    f"({winsetup.account_name(state['domain'], state['user'])}). Set up from that account.")
+            button = None
+        else:
+            hint = ("Off. Windows signs in to this account by itself at start-up, so OBS and this app can get "
+                    "ready with nobody at the computer. Read what it changes first: it weakens this computer's "
+                    "security.")
+            button = ui.button("Set up ...", clicked=self.window_.open_unattended)
+        lock = ui.Switch(winsetup.task_exists(winsetup.LOCK_TASK))
+        lock.toggled.connect(self.set_lock)
+        wake = ui.Switch(self.store.settings.get("wake_before_stream", False))
+        wake.toggled.connect(self.set_wake)
+        wake_hint = ("Wakes this computer from sleep a few minutes before each stream is created, and before OBS "
+                     "is opened or checked. Not from a full shut-down.")
+        if self.store.settings.get("wake_error"):
+            wake_hint += f"\nNot working: {self.store.settings['wake_error']}"
+        self.section("Unattended PC", [
+            ("Automatic sign-in", hint, button),
+            ("Lock right after it starts", "Locks the automatic sign-in at start-up within seconds. A person who "
+                                           "signs in later is not locked out.", lock),
+            ("Wake before streams", wake_hint, wake)])
+
+    def unattended_off(self):
+        if not ui.ask(self, "Automatic sign-in", "Turn off automatic sign-in and delete the stored password? "
+                                                 "Windows asks for administrator approval."):
+            return
+        code = winsetup.run_elevated(["autologon-off"])
+        if code != winsetup.DONE:
+            ui.tell(self, "Automatic sign-in", "Nothing was changed: the administrator approval was not given."
+                    if code == winsetup.CANCELLED else "Automatic sign-in could not be turned off.")
+        else:
+            try:
+                winsetup.set_lock_task(False)
+            except winsetup.WinSetupError:
+                pass
+        self.refresh()
+
+    def set_lock(self, on):
+        try:
+            winsetup.set_lock_task(on)
+        except winsetup.WinSetupError as exc:
+            ui.tell(self, "Lock right after it starts", str(exc))
+        self.refresh()
+
+    def set_wake(self, on):
+        self.set("wake_before_stream", on)
+        problem = winsetup.sync_wake(self.store)
+        if problem:
+            ui.tell(self, "Wake before streams", f"The wake task could not be made: {problem}")
+        self.refresh()
 
     def set_motion(self, on):
         self.set("motion", on)
@@ -967,6 +1138,15 @@ class MainWindow(QMainWindow):
         """A round of the app's own work: the scheduling, then telling about it, then (once a day) a look
         for a newer version. Runs off the window's thread."""
         entries = fn(self.store, self.vault)
+        try:
+            engine.open_obs(self.store, self.vault)   # before the checks, which then find it open
+        except Exception:   # never in the way of the scheduling
+            pass
+        if winsetup.supported():
+            try:
+                winsetup.sync_wake(self.store)
+            except Exception:
+                pass
         notify.after(self.store, self.vault, entries)
         try:
             updates.check(self.store)
@@ -1014,6 +1194,20 @@ class MainWindow(QMainWindow):
                     sorted({KIND_NAMES.get(e['kind'], e['kind']) for e in made})) + ".", QSystemTrayIcon.Information)
 
     # ---- window and tray ----
+    def open_unattended(self):
+        """Settings → Unattended PC, and its guide (also from the installer's last page)."""
+        self.open_window()
+        self.show_page([p[0] for p in self.PAGES].index("settings"))
+        if not winsetup.supported():
+            ui.tell(self, "Unattended PC", "Running unattended is set up on Windows only.")
+            return
+        wizard = UnattendedWizard(self, self.store, self.vault)
+        if wizard.exec():
+            notes = wizard.destination["notes"]
+            ui.tell(self, "Unattended PC", "Automatic sign-in is on. Restart the computer to try it: it should "
+                                           "sign in and lock by itself." + ("\n\n" + "\n".join(notes) if notes else ""))
+        self.refresh()
+
     def open_window(self):
         self.showNormal()
         self.raise_()

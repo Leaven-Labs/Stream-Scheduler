@@ -1,5 +1,5 @@
 ; The Windows installer (Inno Setup 6.3 or newer). tools/build.py runs this after PyInstaller:
-;   iscc /DAppVersion=0.0.7-alpha /DAppVersionNumber=0.0.7 tools\installer.iss
+;   iscc /DAppVersion=0.0.8-alpha /DAppVersionNumber=0.0.8 tools\installer.iss
 ;   -> dist\Stream-Scheduler-Windows-Setup.exe
 ;
 ; It installs for the person who runs it, with no administrator prompt:
@@ -67,6 +67,9 @@ Root: HKCU; Subkey: "{#RunKey}"; ValueType: string; ValueName: "{#AppName}"; Val
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+; Off unless ticked: it only opens the explanation (Settings -> Unattended PC); nothing changes before the
+; person reads what automatic sign-in does and agrees to it there.
+Filename: "{app}\{#AppExe}"; Parameters: "--unattended"; Description: "Set this PC up to run unattended (opens the explanation in {#AppName})"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 function IsUpgrade: Boolean;
