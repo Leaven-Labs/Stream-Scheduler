@@ -1,7 +1,7 @@
 # Stream Scheduler in Docker (Unraid and other home servers)
 
 The container runs the same app as the desktop version, all the time, on your server, so no computer
-has to be left on. You use the app's window in a web browser: **http://&lt;server&gt;:5800**.
+has to be left on. You use the app's window in a web browser: **https://&lt;server&gt;:5800**, behind a login page.
 
 > **Alpha, and new.** The container has been built and tested, but not yet used with a real YouTube
 > channel from a server. Please report what you find.
@@ -15,20 +15,23 @@ has to be left on. You use the app's window in a web browser: **http://&lt;serve
    ```
 
 2. **Docker → Add Container**, choose **stream-scheduler** under *Template*.
-3. Fill in **Keyring password** (see below), check **Appdata**, and click **Apply**.
-4. Click the container's icon → **WebUI**.
+3. Fill in **Keyring password** (see below), a **Web login user name** and **Web login password**,
+   check **Appdata**, and click **Apply**.
+4. Click the container's icon → **WebUI**. The certificate is self-signed, so the browser warns the
+   first time: accept it, then sign in.
 
 Unraid passes your time zone (`TZ`) to the container by itself.
 
 ## Docker Compose or `docker run`
 
 ```bash
-KEYRING_PASSWORD=choose-one TZ=America/Chicago docker compose up -d
+KEYRING_PASSWORD=choose-one WEB_USER=me WEB_PASSWORD=choose-another TZ=America/Chicago docker compose up -d
 ```
 
 ```bash
 docker run -d --name stream-scheduler --restart unless-stopped -p 5800:5800 --shm-size 1g \
   -v /path/to/appdata:/config -e KEYRING_PASSWORD=choose-one -e TZ=America/Chicago \
+  -e WEB_AUTHENTICATION_USERNAME=me -e WEB_AUTHENTICATION_PASSWORD=choose-another \
   ghcr.io/leaven-labs/stream-scheduler:latest
 ```
 
@@ -41,17 +44,19 @@ To build the image yourself: `docker build -t stream-scheduler .` in the reposit
 | `KEYRING_PASSWORD` | **Required.** Encrypts the sign-ins (see below). Choose one and keep it. |
 | `TZ` | Your time zone, such as `America/Chicago`. Schedules use it: "Sunday at 8:00 AM" is 8:00 AM there. |
 | `USER_ID`, `GROUP_ID` | Who owns the files in `/config` (Unraid: 99 and 100). |
-| `WEB_AUTHENTICATION`, `WEB_AUTHENTICATION_USERNAME`, `WEB_AUTHENTICATION_PASSWORD` | `1` and a user name and password: a login page before the WebUI opens. **Needs `SECURE_CONNECTION=1`**, or the container does not start. |
-| `SECURE_CONNECTION` | `1` to serve the WebUI over https, with a self-signed certificate (the browser warns the first time; `http://` addresses are sent on to `https://`). |
-| `VNC_PASSWORD` | A simpler choice than the login page: one password, at most 8 characters, asked by the WebUI and port 5900, also over plain http. |
+| `WEB_AUTHENTICATION_USERNAME`, `WEB_AUTHENTICATION_PASSWORD` | **Required.** The user name and password for the login page before the WebUI opens. |
 | `DARK_MODE` | `1` for a dark frame around the app (the app's own theme is in its Settings). |
 
 The container is built on [jlesage/baseimage-gui](https://github.com/jlesage/docker-baseimage-gui), so
 its other settings work too.
 
-**Anyone who can open the WebUI can use the app**, and so change or cancel your streams. Keep port
-5800 on your home network, set a password as above (the login page, with `SECURE_CONNECTION=1`), and reach it from outside only through a VPN
-(Unraid's WireGuard, Tailscale) rather than by opening the port on your router.
+**Whoever signs in to the WebUI can use the app**, and so change or cancel your streams, so the login
+page is the only way in. The WebUI is always https with a login page (the certificate is self-signed;
+`http://` addresses are sent on to `https://`), and the VNC server that the WebUI uses inside the
+container listens only there: there is no port 5900. Without a user name and password, or with
+`WEB_AUTHENTICATION`, `SECURE_CONNECTION` or `VNC_LOCALHOST_ONLY` switched off, the container stops
+at once and its log says what to set. Keep port 5800 on your home network and reach it from outside only through a
+VPN (Unraid's WireGuard, Tailscale), rather than by opening the port on your router.
 
 ## The sign-ins and `KEYRING_PASSWORD`
 

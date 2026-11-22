@@ -27,11 +27,19 @@ jobs:
           -c "/opt/venv/bin/python app.py --uitest && /opt/venv/bin/python -m unittest discover tests"
       - name: Starts, with its keyring unlocked
         run: |
-          docker run -d --name ss -e KEYRING_PASSWORD=ci-only stream-scheduler:ci
+          docker run -d --name ss -e KEYRING_PASSWORD=ci-only -e WEB_AUTHENTICATION_USERNAME=ci \
+            -e WEB_AUTHENTICATION_PASSWORD=ci-only stream-scheduler:ci
           for i in $(seq 1 30); do docker exec ss pgrep -f "python app.py" && break; sleep 2; done
           sleep 5
           docker exec ss pgrep -f "python app.py" || { docker logs ss; exit 1; }
           docker rm -f ss
+      - name: Does not start without the login page
+        run: |
+          docker run -d --name nologin -e KEYRING_PASSWORD=ci-only stream-scheduler:ci
+          sleep 10
+          docker logs nologin 2>&1 | grep "opens only behind the WebUI's login page"
+          test "$(docker inspect -f '{{.State.Running}}' nologin)" = false
+          docker rm -f nologin
       - name: Publish
         if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
         run: |
